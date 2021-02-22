@@ -5,17 +5,19 @@ import urllib.request as urllib2
 
 class KrakenFrontend:
 
-    def __init__(self, filename):
+    def __init__(self, filename=None):
         self.domain = "https://api.kraken.com"
         self.privatePath = "/0/private/"
         self.publicPath = "/0/public/"
         
-        with open(filename, 'r') as file:
-            self.publicKey = file.readline().strip()
-            self.privateKey = base64.b64decode(file.readline().strip())
+        if filename:
+            with open(filename, 'r') as file:
+                self.publicKey = file.readline().strip()
+                self.privateKey = base64.b64decode(file.readline().strip())
             
         self.name = "KR"
         self.taxRate = 0.0026
+        # Converts Kraken trade pair names to local coin names
         self.coinDict = {'ZUSD': 'USD',
                          'XXBT': 'BTC',
                          'XETH': 'ETH',

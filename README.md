@@ -9,9 +9,7 @@ there are enterprise applications that do this same exact task.
 
 # Usage
 
-Create an Authfile for each website's API, containing the public key in line 1 and private key in line 2.
-
-Run main.py directly in src with python3. Specify the location of each Authfile (defaults to "../auth/coinbaseAuth.txt" or similar).
+Run src/main.py with python3.
 
 Once per minute, it prints the status of any arbitrage cycles.
 
@@ -36,6 +34,12 @@ If such a cycle existed, it would lead to easy profit through automatically trad
 
 ArbitCycle already supports API authentication on each of the trading sites, so this would not be a difficult change.
 
+# Authentication
+
+Already implemented is an Authentication pattern for each brokerage. This is disabled by default.
+Enabling it is simply changing a boolean early in main.py.
+As of now it has no benefit; if I implemented the trading functionality described above, then it would become necessary..
+
 # Support
 
 If you like this kind of project, you can show your support by (fittingly) donating to my BTC Wallet:
@@ -43,4 +47,4 @@ If you like this kind of project, you can show your support by (fittingly) donat
 1GmX7pchYDgdG7vvdgJ9uurXiFkJwswPnk
 ```
 
-Thank you :)
+Thank you! :)

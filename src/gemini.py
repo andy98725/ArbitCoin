@@ -3,14 +3,15 @@ import time, base64, hashlib, hmac, json, requests
 
 class GeminiFrontend:
     
-    def __init__(self, filename, coins):
+    def __init__(self, coins, filename=None):
         self.domain = "https://api.gemini.com" 
         self.publicPath = "/v1/" 
         self.privatePath = "/v1/" 
         
-        with open(filename, 'r') as file:
-            self.publicKey = file.readline().strip()
-            self.privateKey = file.readline().strip().encode()
+        if filename:
+            with open(filename, 'r') as file:
+                self.publicKey = file.readline().strip()
+                self.privateKey = file.readline().strip().encode()
             
         self.name = "GM"
         self.taxRate = 0.0035

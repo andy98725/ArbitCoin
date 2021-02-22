@@ -1,7 +1,9 @@
 import cbpro
 
+
 class CoinbaseFrontend:
-    def __init__(self, filename):
+
+    def __init__(self, filename=None):
         self.authClient = authenticateFromFile(filename)
         
         self.name = "CB"
@@ -15,7 +17,6 @@ class CoinbaseFrontend:
             return False
             
         return True
-    
 
     def getTradeRates(self, coins):
         bestTrades = [[None for _ in range(len(coins))] for _ in range(len(coins))]
@@ -39,7 +40,6 @@ class CoinbaseFrontend:
                     if bestTrades[c2][c1] == None or bestTrades[c2][c1] < ask:
                         bestTrades[c2][c1] = ask
         return bestTrades
-    
     
     def __price(self, pid):
         book = self.authClient.get_product_order_book(product_id=pid, level=1)
@@ -78,17 +78,21 @@ class CoinbaseFrontend:
     def __tax(self, val):
         return val / (1 + self.taxRate)
     
-    
         
 def getPrice(trade):
     if trade == None:
         return None
     else:
         return trade.get('price').strip('0')
+
+
 def authenticateFromFile(filename):
-    with open(filename, 'r') as file:
-        key = file.readline().strip()
-        secret = file.readline().strip()
-        passphrase = file.readline().strip()
-    
-    return cbpro.AuthenticatedClient(key,secret, passphrase)
+    if filename:
+        with open(filename, 'r') as file:
+            key = file.readline().strip()
+            secret = file.readline().strip()
+            passphrase = file.readline().strip()
+        
+        return cbpro.AuthenticatedClient(key, secret, passphrase)
+    else:
+        return cbpro.PublicClient()
