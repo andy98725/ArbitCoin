@@ -1,3 +1,4 @@
+import config
 
 
 class TradingGraph:
@@ -57,8 +58,9 @@ class TradingGraph:
                     cycle = []
                     while True:
                         (j, edge) = sources[j]
-                        if edge in cycle:
-                            index = cycle.index(edge)+1
+                        # Break on a loop or undefined source
+                        if edge in cycle or not sources[j]:
+                            index = cycle.index(edge) + 1
                             cycle.insert(0, edge)
                             return cycle[0:index]
                             break
@@ -66,6 +68,19 @@ class TradingGraph:
                         
         return None
     
+    def executeCycle(self, cycle):
+        # Ensure authorized
+        if not config.authenticate:
+            return
+        if not config.autoTrade:
+            prompt = input("Commence Trade? [y/N]").lower()
+            if not prompt or prompt[0] != 'y':
+                return
+        print("TODO")
+        # TODO:
+        # Execute on trades in cycle as quickly and simultaneously as possible
+    
+        
     def __str__(self):
 #         return "[Trading Graph\nNodes: {}\nEdges: {}\n]".format(self.nodes, self.edges)
         ret = "[Trading Graph\nNodes: {} Edges: [\n".format(self.nodes)

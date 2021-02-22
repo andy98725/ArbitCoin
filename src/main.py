@@ -1,63 +1,59 @@
 from datetime import datetime
 from time import sleep
-import coinbase, kraken, gemini
+import traceback
+from traders import gemini, coinbase, kraken
 from tradeGraph import TradingGraph
-
-updateOnEmpty = True
-coins = ["USD", "BTC", "ETH", "LTC", "LINK", "BCH", "ZEC", "USDC", "XLM", "AAVE"]
-trades = []
+import config, util
 
 
-def auth(full):
-    if full:
-        cbfile = input("Please enter the Coinbase auth file... ")
-        if not cbfile:
-            cbfile = "../auth/coinbaseAuth.txt"
-        cb = coinbase.CoinbaseFrontend(cbfile)
-        
+def auth():
+    if config.authenticate:
+        cbfile = util.getFile("Please enter the Coinbase auth file... ", "../auth/coinbaseAuth.txt")
         print("Authenticating Coinbase.")
+        cb = coinbase.CoinbaseFrontend(cbfile)
         if cb.verifyAuth():
-            trades.append(cb)
+            config.trades.append(cb)
         else:
             print("Coinbase Auth Failed.")
         
-        krfile = input("Please enter the Kraken auth file... ")
-        if not krfile:
-            krfile = "../auth/krakenAuth.txt"
-            
+        krfile = util.getFile("Please enter the Kraken auth file... ", "../auth/krakenAuth.txt")
         print("Authenticating Kraken.")
         kr = kraken.KrakenFrontend(krfile)
         if kr.verifyAuth():
-            trades.append(kr)
+            config.trades.append(kr)
         else:
             print("Kraken Auth Failed.")
         
-        gmfile = input("Please enter the Gemini auth file... ")
-        if not gmfile:
-            gmfile = "../auth/geminiAuth.txt"
-            
+        gmfile = util.getFile("Please enter the Gemini auth file... ", "../auth/geminiAuth.txt")
         print("Authenticating Gemini.")
-        gm = gemini.GeminiFrontend(coins, gmfile)
+        gm = gemini.GeminiFrontend(config.coins, gmfile)
         if gm.verifyAuth():
-            trades.append(gm)
+            config.trades.append(gm)
         else:
             print("Gemini Auth Failed.")
     else:
-        trades.append(coinbase.CoinbaseFrontend())
-        trades.append(kraken.KrakenFrontend())
-        trades.append(gemini.GeminiFrontend(coins))
+        # Public access only
+        config.trades = [coinbase.CoinbaseFrontend(), kraken.KrakenFrontend(), gemini.GeminiFrontend(config.coins)]
 
 
 def main():
-    if updateOnEmpty:
-        print(datetime.now().strftime("%H:%M"), " Finding arbitrage cycles...")
-    graph = TradingGraph(coins, trades)
-    cycle = graph.shortestProfitCycle()
-    if cycle or updateOnEmpty:
-        print(cycle)
+    try:
+        if config.updateOnEmpty:
+            print(datetime.now().strftime("%H:%M"), " Finding arbitrage cycles...")
+            
+        graph = TradingGraph(config.coins, config.trades)
+        cycle = graph.shortestProfitCycle()
+        if cycle:
+            print(datetime.now().strftime("%H:%M"), " Cycle Found:")
+            print(cycle)
+            graph.executeCycle(cycle)
+                
+        elif config.updateOnEmpty:
+            print(datetime.now().strftime("%H:%M"), " None.")
+    except:
+        traceback.print_exc()
 
-
-auth(False)
+auth()
 print("Authenticated.")
 print()
 print("Entering main Loop.")

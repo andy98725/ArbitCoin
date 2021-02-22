@@ -25,20 +25,21 @@ This list is easily customisable. The sites are as well, with minor coding to ma
 
 # Further Development
 
-I were to continue with this project, I would start with refactoring the code.
-The brokerage frontends should pull from a parent class with methods properly abstracted, such as getting the price of a coin.
+If this proves worthwhile, I will implement automated trading on arbitrage cycles.
+Until then, ArbitCoin will solely detect and print said cycles.
 
-The next thing I would do, and will do if this is at all effective, is implement automated trading.
-Currently, ArbitCoin only *observes* any cycles; it does nothing to execute on one.
-If such a cycle existed, it would lead to easy profit through automatically trading along the cycle.
+The architecture could be better optimized for speed.
+Currently, ArbitCoin polls each brokerage once per minute through RESTful interfaces for trade options,
+forms a directed graph from the aggregate, and detects any negative cycles.
+This could be optimized through Websockets to update existing trade knowledge and update a continuous graph.
 
-ArbitCycle already supports API authentication on each of the trading sites, so this would not be a difficult change.
+Doing so would allow ArbitCoin to go off of real time updates, greatly increasing the response time and detection rate. This would allow it to place an exact start and end on arbitrage cycle windows, and possibly even compete with enterprise software (given enough optimizations and good latency).
 
 # Authentication
 
-Already implemented is an Authentication pattern for each brokerage. This is disabled by default.
-Enabling it is simply changing a boolean early in main.py.
-As of now it has no benefit; if I implemented the trading functionality described above, then it would become necessary..
+An Authentication pattern for each brokerage already exists. If you want to enable this, update config.py.
+
+As of now it has no benefit; if I implemented the automated trading, then it would be necessary.
 
 # Support
 
