@@ -6,7 +6,6 @@ class CoinbaseFrontend:
         
         self.name = "CB"
         self.taxRate = 0.005
-        self.coinDict = {'btc': 'BTC-USD', 'eth' : 'ETH-USD', 'ltc' : 'LTC-USD', 'link' : 'LINK-USD'}
     
     def verifyAuth(self):
         acts = self.authClient.get_accounts()

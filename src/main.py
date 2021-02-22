@@ -1,76 +1,69 @@
 from datetime import datetime
-import time
-import coinbase, kraken
+from time import sleep
+import coinbase, kraken, gemini
 from tradeGraph import TradingGraph
-import gemini
 
-
-coins = ["USD", "BTC", "ETH", "LTC", "LINK"]
+updateOnEmpty = False
+coins = ["USD", "BTC", "ETH", "LTC", "LINK", "BCH", "ZEC", "USDC", "XLM", "AAVE"]
 trades = []
 
+
 def auth():
-     
-#     cbfile = input("Please enter the Coinbase auth file... ")
-    cbfile = None
+    cbfile = input("Please enter the Coinbase auth file... ")
+#     cbfile = None
     if not cbfile:
         cbfile = "../auth/coinbaseAuth.txt"
     cb = coinbase.CoinbaseFrontend(cbfile)
     
-    print("Authenticating Coinbase...")
+    print("Authenticating Coinbase.")
     if cb.verifyAuth():
         trades.append(cb)
     else:
         print("Coinbase Auth Failed.")
     
-#     krfile= input("Please enter the Kraken auth file... ")
-    krfile = None
+    krfile= input("Please enter the Kraken auth file... ")
+#     krfile = None
     if not krfile:
         krfile = "../auth/krakenAuth.txt"
         
-    print("Authenticating Kraken...")
+    print("Authenticating Kraken.")
     kr = kraken.KrakenFrontend(krfile)
     if kr.verifyAuth():
         trades.append(kr)
     else:
         print("Kraken Auth Failed.")
     
-#     gmfile= input("Please enter the Gemini auth file... ")
-    gmfile = None
+    gmfile= input("Please enter the Gemini auth file... ")
+#     gmfile = None
     if not gmfile:
         gmfile = "../auth/geminiAuth.txt"
         
-    print("Authenticating Gemini...")
+    print("Authenticating Gemini.")
     gm = gemini.GeminiFrontend(gmfile, coins)
     if gm.verifyAuth():
         trades.append(gm)
     else:
         print("Gemini Auth Failed.")
-    
-
 
 def loop():
     while True:
         main()
-        time.sleep(60)
+        sleep(60)
 
 def main():
 #         print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
-    print(datetime.now().strftime("%H:%M"), " Finding profit routes...")
+    if updateOnEmpty:
+        print(datetime.now().strftime("%H:%M"), " Finding arbitrage cycles...")
     graph = TradingGraph(coins, trades)
-    print(graph.shortestProfitCycle())
+    cycle = graph.shortestProfitCycle()
+    if cycle or updateOnEmpty:
+        print(cycle)
     
-def sellTax(sell, tax):
-    return float(sell) / (1 + tax)
-def buyTax(buy, tax):
-    return float(buy) * (1 - tax)
-def priceDiff(sell, buy):
-    return float(sell) / float(buy)
-
-
 auth()
-print("\nConfigured. Entering main Loop.")
+print("Authenticated.")
+print()
+print("Entering main Loop.")
 loop()
-
 
 
 # Nice.

@@ -16,7 +16,18 @@ class KrakenFrontend:
             
         self.name = "KR"
         self.taxRate = 0.0026
-        self.coinDict = {'ZUSD': 'USD', 'XXBT': 'BTC', 'XETH': 'ETH', 'XLTC': 'LTC', 'LINK': 'LINK'}
+        self.coinDict = {'ZUSD': 'USD',
+                         'XXBT': 'BTC',
+                         'XETH': 'ETH',
+                         'XLTC': 'LTC',
+                         'LINK': 'LINK',
+                         'BCH' : 'BCH',
+                         'XZEC': 'ZEC',
+                         'USDC': 'USDC',
+                         'XXLM': 'XLM',
+                         'AAVE': 'AAVE',
+                         } 
+        
     
     def verifyAuth(self):
         self.__privateQuery("Balance")
@@ -24,8 +35,10 @@ class KrakenFrontend:
     
     def getTradeRates(self, coins):
         bestTrades = [[None for _ in range(len(coins))] for _ in range(len(coins))]
+        
         products = self.__publicQuery("AssetPairs")
         for name, traits in products.items():
+            
             # Avoid direct trades, which incur a higher fee
             if traits.get('fees')[0][1] / 100 > self.taxRate:
                 continue
