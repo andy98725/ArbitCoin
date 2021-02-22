@@ -1,10 +1,12 @@
 import cbpro
-from itertools import islice
 
 class CoinbaseFrontend:
     def __init__(self, filename):
         self.authClient = authenticateFromFile(filename)
+        
+        self.name = "CB"
         self.taxRate = 0.005
+        self.coinDict = {'btc': 'BTC-USD', 'eth' : 'ETH-USD', 'ltc' : 'LTC-USD', 'link' : 'LINK-USD'}
     
     def verifyAuth(self):
         acts = self.authClient.get_accounts()
@@ -15,35 +17,53 @@ class CoinbaseFrontend:
             
         return True
     
-    def bitcoinPrice(self, maxReqs = 200):
-        trades = islice(self.authClient.get_product_trades(product_id="BTC-USD"), maxReqs)
+
+    def getTradeRates(self, coins):
+        bestTrades = [[None for _ in range(len(coins))] for _ in range(len(coins))]
+        products = self.authClient.get_products()
         
-        # Find best offers
-        lowBuy = None
-        highBuy = None
-        lowSell = None
-        highSell = None
-        for t in trades:
-            if t.get('side') == 'buy':
-                if lowBuy == None or lowBuy.get('price') > t.get('price'):
-                    lowBuy = t
-                if highBuy == None or highBuy.get('price') < t.get('price'):
-                    highBuy = t
-            else:
-                if lowSell == None or lowSell.get('price') > t.get('price'):
-                    lowSell = t
-                if highSell == None or highSell.get('price') < t.get('price'):
-                    highSell = t
+        for pair in products:
+            if pair.base_currency in coins and pair.quote_currency in coins:
+                c1 = coins.index(pair.base_currency)
+                c2 = coins.index(pair.quote_currency)
+                bid, ask = self.price(pair.id)
+                if bestTrades[c1][c2] == None or bestTrades[c1][c2] < ask:
+                    bestTrades[c1][c2] = ask
+                if bestTrades[c2][c1] == None or bestTrades[c2][c1] < 1/bid:
+                    bestTrades[c2][c1] = 1/bid
+                
+        return bestTrades
+    
+    
+    def __price(self, pid):
+        book = self.authClient.get_product_order_book(product_id=pid, level=1)
         
-        if lowBuy == None or highBuy == None or lowSell == None or highSell == None:
-            err = "Missing CB Purchase point: low Buy {}, high Buy {}, low Sell {}, high Sell {}"
-            raise Exception(err.format(lowBuy, highBuy, lowSell, highSell))
+        bidTot = 0
+        bidCount = 0
+        for t in book.get('bids'):
+            price = float(t[0])
+            qty = float(t[1])
+            bidTot = bidTot + price * qty 
+            bidCount = bidCount + qty
+
+        askTot = 0
+        askCount = 0
+        for t in book.get('asks'):
+            price = float(t[0])
+            qty = float(t[1])
+            askTot = askTot + price * qty 
+            askCount = askCount + qty
         
-        return getPrice(lowBuy), getPrice(highBuy), getPrice(lowSell), getPrice(highSell)
-#         buyString = "Buying at: ("+lowBuy.get('price').strip('0')+" - " + highBuy.get('price').strip('0') + ")"
-#         sellString = "Selling at: ("+lowSell.get('price').strip('0')+" - " + highSell.get('price').strip('0') + ")"
-#         
-#         return buyString + "\n" + sellString
+        if bidCount == 0:
+            raise Exception("No CB Bid orders found")
+        if askCount == 0:
+            raise Exception("No CB Ask orders found")
+        
+        return self.tax(bidTot/bidCount), self.tax(askTot/askCount)
+    
+    def __tax(self, val):
+        return val / (1 + self.taxRate)
+    
     
         
 def getPrice(trade):

@@ -11,10 +11,13 @@ class KrakenFrontend:
             self.publicKey = file.readline().strip()
             self.privateKey = base64.b64decode(file.readline().strip())
             
+        self.name = "KR"
         self.taxRate = 0.001
+        self.coinDict = {'btc': 'XXBTZUSD', 'eth' : 'XETHZUSD', 'ltc' : 'XLTCZUSD', 'link' : 'LINKUSD'}
     
     def verifyAuth(self):
         balance =  self.__privateQuery("Balance")
+#         print(self.__publicQuery("AssetPairs"))
         
         if type(balance) is dict and balance.get('error'):
             print("Authentication returned: ", balance.get('error'))
@@ -22,28 +25,33 @@ class KrakenFrontend:
             
         return True
     
-    def bitcoinPrice(self):
-        depth = self.__publicQuery("Depth", "&pair=XXBTZUSD").get('result').get('XXBTZUSD')
+    
+    def price(self, coin):
+        coin = self.coinDict.get(coin)
+        book = self.__publicQuery("Depth", "&pair={}".format(coin)).get('result').get(coin)
         
-        lowBuy = highBuy = None
-        lowSell = highSell = None
-        
-        for t in depth.get('bids'):
-            if lowBuy == None or lowBuy[0] < t[0]:
-                lowBuy = t
-            if highBuy == None or highBuy[0] < t[0]:
-                highBuy = t
-        for t in depth.get('asks'):
-            if lowSell == None or lowSell[0] < t[0]:
-                lowSell = t
-            if highSell == None or highSell[0] < t[0]:
-                highSell = t
-                
-        if lowBuy == None or highBuy == None or lowSell == None or highSell == None:
-            err = "Missing Kraken Purchase point: low Buy {}, high Buy {}, low Sell {}, high Sell {}"
-            raise Exception(err.format(lowBuy, highBuy, lowSell, highSell))
+        bidTot = 0
+        bidCount = 0
+        for t in book.get('bids'):
+            price = float(t[0])
+            qty = float(t[1])
+            bidTot = bidTot + price * qty 
+            bidCount = bidCount + qty
 
-        return getPrice(lowBuy), getPrice(highBuy), getPrice(lowSell), getPrice(highSell)
+        askTot = 0
+        askCount = 0
+        for t in book.get('asks'):
+            price = float(t[0])
+            qty = float(t[1])
+            askTot = askTot + price * qty 
+            askCount = askCount + qty
+        
+        if bidCount == 0:
+            raise Exception("No KR Bid orders found")
+        if askCount == 0:
+            raise Exception("No KR Ask orders found")
+        
+        return bidTot/bidCount, askTot/askCount
         
     def __privateQuery(self, queryMethod, queryData = ""):
         n = nonce()

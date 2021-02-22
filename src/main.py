@@ -30,34 +30,39 @@ def auth():
     return True
     
 
-triggerThreshold = 1.00
-    
+
+coins = ["btc", "eth", "ltc", "link"]
 def main():
-#     print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
-
-    print("Checking ...")
-    cbLB, cbHB, cbLS, cbHS = cb.bitcoinPrice()
-    krLB, krHB, krLS, krHS = kr.bitcoinPrice()
+    for c in coins:
+        priceCheck(c, cb, kr)
+        priceCheck(c, kr, cb)
+        
+def priceCheck(coin, cb, kr):
+    # cbBid = they buy, we sell coin
+    # cbAsk = they sell, we buy coin
+#     cbBid, cbAsk = cb.price(coin)
+#     krBid, krAsk = kr.price(coin)
+    _, cbAsk = cb.price(coin)
+    krBid, _ = kr.price(coin)
     
-    # Factor in 
-    cbLST = sellTax(cbLS, cb.taxRate)
-    cbHBT = buyTax(cbHB, cb.taxRate)
-    krLST = sellTax(krLS, kr.taxRate)
-    krHBT = buyTax(krHB, kr.taxRate)
-
+#     cbBidT =  cb.taxRate * cbBid
+    cbAskT = cb.taxRate * cbAsk
+    krBidT =  kr.taxRate * krBid
+#     krAskT = kr.taxRate * krAsk
     
+    cbTOkr = krBid - cbAsk
+    cbTOkrT = krBidT + cbAskT
+#     krTOcb = cbBid - krAsk
+#     krTOcbT = cbBidT + krAskT
     
-
-    CBsKRb = priceDiff(cbLST, krHBT)
-    KRsCBb = priceDiff(krLST, cbHBT)
-    if CBsKRb >= triggerThreshold:
-        print("Buy from CB at {}, Sell at Kraken at{}".format(round(CBsKRb, 5)))
-        print("{}% increase".format(round((CBsKRb-1)*100, 3)))
-    if KRsCBb >= triggerThreshold:
-        print("Buy from Kraken, Sell at CB: {} mult".format(round(KRsCBb, 5)))
-        print("{}% increase".format(round((KRsCBb-1)*100, 3)))
+#     if cbTOkr > cbTOkrT:
+    if cbTOkr > 0:
+        print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
+        print("Coin {}".format(coin))
+        print("Buy from {} at {}, Sell at {} at {}").format(cb.name, cbAsk, kr.name, krBid)
+        print("{} Tax of {}, {} Tax of {}".format(cb.name, cbAskT, kr.name, krBidT))
+        print("Gross profit of {} minus taxes of {} is profit of {}".format(cbTOkr, cbTOkrT, cbTOkr-cbTOkrT))
     
-
 def sellTax(sell, tax):
     return float(sell) / (1 + tax)
 def buyTax(buy, tax):
