@@ -30,14 +30,15 @@ class CoinbaseFrontend:
                 c2 = coins.index(c2)
                 bid, ask = self.__price(pair.get('id'))
                 
-                if ask != None:
-                    ask = self.__tax(ask)
-                    if bestTrades[c1][c2] == None or bestTrades[c1][c2] < ask:
-                        bestTrades[c1][c2] = ask
                 if bid != None:
-                    bid = self.__tax(1 / bid)
-                    if bestTrades[c2][c1] == None or bestTrades[c2][c1] < bid:
-                        bestTrades[c2][c1] = bid
+                    bid = self.__tax(bid)
+                    if bestTrades[c1][c2] == None or bestTrades[c1][c2] < bid:
+                        bestTrades[c1][c2] = bid
+                
+                if ask != None:
+                    ask = self.__tax(1 / ask)
+                    if bestTrades[c2][c1] == None or bestTrades[c2][c1] < ask:
+                        bestTrades[c2][c1] = ask
         return bestTrades
     
     

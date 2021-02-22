@@ -20,7 +20,6 @@ class TradingGraph:
     
     def shortestProfitCycle(self):
         v = len(self.nodes)
-        print("Finding profit routes...")
         # It's all ratios, so start out from 1 USD
         sources = [None for _ in range(v)]
         values = [None for _ in range(v)]
@@ -42,8 +41,8 @@ class TradingGraph:
 #         print(self)
 #         print("Res :")
 #         print([i for i in range(v)])
-                print(values)
-                print(sources)
+#         print(values)
+#         print(sources)
 
         # Check if any cycles remain
         for i in range(v):
@@ -59,11 +58,12 @@ class TradingGraph:
                     while True:
                         (j, edge) = sources[j]
                         if edge in cycle:
+                            index = cycle.index(edge)+1
+                            cycle.insert(0, edge)
+                            return cycle[0:index]
                             break
-                        cycle.append(edge)
+                        cycle.insert(0, edge)
                         
-                    cycle.reverse()
-                    return cycle
         return None
     
     def __str__(self):
