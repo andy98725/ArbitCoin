@@ -23,15 +23,21 @@ class CoinbaseFrontend:
         products = self.authClient.get_products()
         
         for pair in products:
-            if pair.base_currency in coins and pair.quote_currency in coins:
-                c1 = coins.index(pair.base_currency)
-                c2 = coins.index(pair.quote_currency)
-                bid, ask = self.price(pair.id)
-                if bestTrades[c1][c2] == None or bestTrades[c1][c2] < ask:
-                    bestTrades[c1][c2] = ask
-                if bestTrades[c2][c1] == None or bestTrades[c2][c1] < 1/bid:
-                    bestTrades[c2][c1] = 1/bid
+            c1 = pair.get('base_currency')
+            c2 = pair.get('quote_currency')
+            if c1 in coins and c2 in coins:
+                c1 = coins.index(c1)
+                c2 = coins.index(c2)
+                bid, ask = self.__price(pair.get('id'))
                 
+                if ask != None:
+                    ask = self.__tax(ask)
+                    if bestTrades[c1][c2] == None or bestTrades[c1][c2] < ask:
+                        bestTrades[c1][c2] = ask
+                if bid != None:
+                    bid = self.__tax(1 / bid)
+                    if bestTrades[c2][c1] == None or bestTrades[c2][c1] < bid:
+                        bestTrades[c2][c1] = bid
         return bestTrades
     
     
@@ -40,26 +46,34 @@ class CoinbaseFrontend:
         
         bidTot = 0
         bidCount = 0
-        for t in book.get('bids'):
-            price = float(t[0])
-            qty = float(t[1])
-            bidTot = bidTot + price * qty 
-            bidCount = bidCount + qty
+        if book.get('bids') != None:
+            for t in book.get('bids'):
+                price = float(t[0])
+                qty = float(t[1])
+                bidTot = bidTot + price * qty 
+                bidCount = bidCount + qty
 
         askTot = 0
         askCount = 0
-        for t in book.get('asks'):
-            price = float(t[0])
-            qty = float(t[1])
-            askTot = askTot + price * qty 
-            askCount = askCount + qty
+        if book.get('asks') != None:
+            for t in book.get('asks'):
+                price = float(t[0])
+                qty = float(t[1])
+                askTot = askTot + price * qty 
+                askCount = askCount + qty
         
         if bidCount == 0:
-            raise Exception("No CB Bid orders found")
+#             raise Exception("No KR Bid orders found")
+            bidTot = None
+        else:
+            bidTot = bidTot / bidCount
         if askCount == 0:
-            raise Exception("No CB Ask orders found")
-        
-        return self.tax(bidTot/bidCount), self.tax(askTot/askCount)
+#             raise Exception("No KR Ask orders found")
+            askTot = None
+        else:
+            askTot = askTot / askCount
+            
+        return bidTot, askTot
     
     def __tax(self, val):
         return val / (1 + self.taxRate)
