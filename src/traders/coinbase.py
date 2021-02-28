@@ -1,11 +1,19 @@
-import cbpro
+import cbpro, atexit
 from traders.traderType import Frontend
+from util import synchronized
+
 
 class CoinbaseFrontend(Frontend):
 
-    def __init__(self, filename=None):
-        super().__init__("CB", 0.005)
+    def __init__(self, coins, tradeGraph, filename=None):
+        super().__init__("CB", 0.005, tradeGraph, coins)
+        
         self.authClient = self.__authenticateFromFile(filename)
+        self.tradeDict = self.__getTradeDict(coins)
+        
+        self.websocketClient = CoinbaseWebsocket(self, list(self.tradeDict.keys()))
+        self.websocketClient.start()
+        atexit.register(self.websocketClient.close)
         
     def verifyAuth(self):
         acts = self.authClient.get_accounts()
@@ -15,70 +23,18 @@ class CoinbaseFrontend(Frontend):
             return False
             
         return True
-
-    def getTradeRates(self, coins):
-        bestTrades = [[None for _ in range(len(coins))] for _ in range(len(coins))]
+    
+    def __getTradeDict(self, coins):
+        tradeDict = dict()
+        
         products = self.authClient.get_products()
-        
-#         # Cache any found trades
-#         self.tradeCache = list()
-        
         for trade in products:
-            c1 = trade.get('base_currency')
-            c2 = trade.get('quote_currency')
+            c1 = trade['base_currency']
+            c2 = trade['quote_currency']
             if c1 in coins and c2 in coins:
-#                 self.tradeCache.append(trade)
-                c1 = coins.index(c1)
-                c2 = coins.index(c2)
-                bid, ask = self.__price(trade.get('id'))
-                
-                if bid != None:
-                    bid = self.__tax(bid)
-                    if bestTrades[c1][c2] == None or bestTrades[c1][c2] < bid:
-                        bestTrades[c1][c2] = bid
-                
-                if ask != None:
-                    ask = self.__tax(1 / ask)
-                    if bestTrades[c2][c1] == None or bestTrades[c2][c1] < ask:
-                        bestTrades[c2][c1] = ask
-        return bestTrades
-    
-    def __price(self, pid):
-        book = self.authClient.get_product_order_book(product_id=pid, level=1)
+                tradeDict[trade['id']] = (c1, c2)
         
-        bidTot = 0
-        bidCount = 0
-        if book.get('bids') != None:
-            for t in book.get('bids'):
-                price = float(t[0])
-                qty = float(t[1])
-                bidTot = bidTot + price * qty 
-                bidCount = bidCount + qty
-
-        askTot = 0
-        askCount = 0
-        if book.get('asks') != None:
-            for t in book.get('asks'):
-                price = float(t[0])
-                qty = float(t[1])
-                askTot = askTot + price * qty 
-                askCount = askCount + qty
-        
-        if bidCount == 0:
-#             raise Exception("No KR Bid orders found")
-            bidTot = None
-        else:
-            bidTot = bidTot / bidCount
-        if askCount == 0:
-#             raise Exception("No KR Ask orders found")
-            askTot = None
-        else:
-            askTot = askTot / askCount
-            
-        return bidTot, askTot
-    
-    def __tax(self, val):
-        return val / (1 + self.taxRate)
+        return tradeDict
     
     def __authenticateFromFile(self, filename):
         if filename:
@@ -90,3 +46,56 @@ class CoinbaseFrontend(Frontend):
             return cbpro.AuthenticatedClient(key, secret, passphrase)
         else:
             return cbpro.PublicClient()
+        
+        
+        # Use this to test cycle detection.
+#     def addBidOption(self, pid, rate, size):
+#         c1, c2 = self.tradeDict[pid]
+#         if c1 == 'BTC' and c2 == 'USD':
+#             rate = 100000
+#         self.graph.addEdge(c1, c2, rate, size, self)
+
+
+class CoinbaseWebsocket(cbpro.WebsocketClient):
+
+    def __init__(self, parent, targets):
+        super().__init__(url="wss://ws-feed.pro.coinbase.com/", products=targets, channels=["level2"])
+        self.parent = parent
+
+    @synchronized
+    def on_message(self, msg):
+            if msg['type'] == 'snapshot':
+                self.__snapshotInit(msg)
+            elif msg['type'] == 'l2update':
+                self.__processTrade(msg)
+            elif msg['type'] == 'subscriptions':
+                pass  # Confirmation message
+            else:
+                raise Exception("Unrecognized Message: {}".format(msg))
+            
+    def __snapshotInit(self, msg):
+        pid = msg['product_id']
+        for price, size in msg['asks']:
+            self.parent.addAskOption(pid, float(price), float(size))
+        for price, size in msg['bids']:
+            self.parent.addBidOption(pid, float(price), float(size))
+        
+    def __processTrade(self, msg):
+        pid = msg['product_id']
+        for change in msg['changes']:
+            price = float(change[1])
+            size = float(change[2])
+            
+            if change[0] == 'buy':  # buy = bid
+                if size > 0:
+                    self.parent.addBidOption(pid, price, size)
+                else:
+                    self.parent.removeBidOption(pid, price)
+            else:  # sell = ask
+                if size > 0:
+                    self.parent.addAskOption(pid, price, size)
+                else:
+                    self.parent.removeAskOption(pid, price)
+        
+    def on_open(self):
+        print("Coinbase Websocket Online.", flush=True)
