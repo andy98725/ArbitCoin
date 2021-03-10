@@ -34,6 +34,8 @@ class TradingGraph:
     @synchronized
     def __updateCycles(self, trader):
         cycle = self.shortestProfitCycle()
+        if cycle != None and cycle.profitPerc < config.thresholdPerc:
+            cycle = None
         
         if self.cycle != cycle:
             self.cycle = cycle
@@ -133,6 +135,7 @@ class Cycle:
         for edge in cycleArr:
             self.profit *= edge.trade.rate
         self.profit -= maxFlow
+        self.profitPerc = self.profit / maxFlow * 100
         
         # Find net changes in each coin from executing all trades
         self.changes = dict()
@@ -155,5 +158,5 @@ class Cycle:
         return self.__str__()
 
     def __str__(self):
-        return str(self.cycle) + "\n(Profit {} {}) [Offset {}]".format(self.profit, self.profitCoin, self.changes)
+        return str(self.cycle) + "\nProfit {}% ({} {}) [Offset {}]".format(self.profitPerc, self.profit, self.profitCoin, self.changes)
 

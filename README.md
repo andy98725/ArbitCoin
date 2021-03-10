@@ -1,17 +1,17 @@
 # About
 ArbitCoin detects any possible arbitrage loops present in cryptocurrency trading websites Coinbase, Kraken, and Gemini.
-This is done by polling the prices for each site, applying the site broker fees (hard coded), and forming a tree with mutliplicative edge weights.
+This is done by connecting to the webhook for each site, applying the site broker fees (hard coded), and forming a Directed Graph with mutliplicative edge weights.
 Any negative cycles in the tree would indicate an arbitragre loop.
 
-This project was completed as an introduction and indulgence to cryptocurrency and to arbitrage.
+This project was completed as an introduction to cryptocurrency and arbitrage.
 It is not expected to be profitable or particularly effective;
-there are enterprise applications that do this same exact task.
+there are enterprise applications that fulfill this same role.
 
 # Usage
 
 Run src/main.py with python3.
 
-Once per minute, it prints the status of any arbitrage cycles.
+Any time an arbitrage cycle appears, changes, or disappears, it outputs the cycle to standard out.
 
 # Targets
 
@@ -19,21 +19,16 @@ ArbitCoin pulls from the sites Coinbase, Kraken, and Gemini for the following  c
 
 Bitcoin, Ethereum, Litecoin, Chainlink, Bitcoin Cash, Zcash, USD Coin, Stellar Lumens, and Aave.
 
-It of course includes US Dollars as a 10th node.
+It includes US Dollars as well.
 
-This list is easily customisable. The sites are as well, with minor coding to match the API styles of additional sites.
+This list is easily customisable. More sites may also be added with some coding.
 
 # Further Development
 
 If this proves worthwhile, I will implement automated trading on arbitrage cycles.
 Until then, ArbitCoin will solely detect and print said cycles.
 
-The architecture could be better optimized for speed.
-Currently, ArbitCoin polls each brokerage once per minute through RESTful interfaces for trade options,
-forms a directed graph from the aggregate, and detects any negative cycles.
-This could be optimized through Websockets to update existing trade knowledge and update a continuous graph.
-
-Doing so would allow ArbitCoin to go off of real time updates, greatly increasing the response time and detection rate. This would allow it to place an exact start and end on arbitrage cycle windows, and possibly even compete with enterprise software (given enough optimizations and good latency).
+The architecture could be better optimized for speed by precalculating minimum necessary values for cycles to appear along each edge.
 
 # Authentication
 

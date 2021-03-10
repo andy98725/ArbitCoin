@@ -11,5 +11,8 @@ authenticate = False
 # When there is a cycle, should it automatically trade?
 autoTrade = False
 
+# Minimum threshold for detecting a cycle
+thresholdPerc = 0.1
+
 # Generated in main. Ignore
 trades = []
