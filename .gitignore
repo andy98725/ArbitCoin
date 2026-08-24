@@ -1,2 +1,6 @@
 auth/*
 *.pyc
+__pycache__/
+config.local.yaml
+data/cache/
+results/live_trades_*.json

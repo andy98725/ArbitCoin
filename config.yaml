@@ -1,0 +1,97 @@
+# ArbitCoin Configuration
+# Copy to config.local.yaml for local overrides (gitignored)
+
+mode: backtest  # backtest | paper | live | monitor
+
+data:
+  use_real_data: false  # true to fetch from exchange APIs, false for synthetic
+  cache_dir: data/cache
+  start_date: null      # null = 14 days ago
+  end_date: null         # null = now
+  bar_interval_minutes: 5
+
+exchanges:
+  - name: kraken
+    fee_rate: 0.0026
+    enabled: true
+  - name: coinbase
+    fee_rate: 0.006
+    enabled: true
+  - name: gemini
+    fee_rate: 0.0035
+    enabled: true
+
+coins:
+  - USD
+  - USDC
+  - BTC
+  - ETH
+  - LTC
+  - LINK
+  - BCH
+  - ZEC
+  - XLM
+  - AAVE
+
+portfolio:
+  initial_usd: 10000.0
+  target_cash_pct: 0.60
+  max_position_pct: 0.25
+
+arbitrage:
+  enable_cross_exchange: true
+  enable_triangular: true
+  min_profit_pct: 0.06
+  max_trade_pct: 0.05
+  max_trade_usd: 500.0
+  cooldown_bars: 2
+  enable_dynamic_threshold: true
+  success_lookback: 50
+
+prediction:
+  enabled: true
+  trade_pct: 0.08
+  min_confidence: 0.40
+  score_threshold: 1.5
+  top_opportunities: 3
+
+risk_management:
+  enable_stop_loss: true
+  stop_loss_pct: 0.03
+  take_profit_pct: 0.018
+  trailing_stop_pct: 0.025
+  trailing_stop_activation: 0.01
+  enable_adaptive_stops: true
+  atr_stop_multiplier: 1.5
+
+pairs_trading:
+  enabled: true
+  trade_pct: 0.04
+  max_hold_bars: 200
+  zscore_entry: 2.0
+  zscore_exit: 0.5
+
+signals:
+  enable_multi_timeframe: true
+  mtf_confirmation_weight: 0.3
+  enable_order_flow: true
+  order_flow_weight: 0.3
+  enable_regime_detection: true
+  enable_kelly_sizing: true
+
+advanced:
+  rebalance_interval_bars: 18
+  enable_rebalancing: true
+  enable_time_of_day: true
+  enable_performance_tracker: true
+  perf_window_bars: 288
+  enable_smart_routing: true
+  enable_correlation_limits: true
+  max_correlated_exposure_pct: 0.40
+
+live:
+  budget: 10000.0
+  max_trade_usd: 500.0
+  circuit_breaker_loss_pct: 0.05
+  max_trades_per_hour: 50
+  poll_interval_seconds: 5

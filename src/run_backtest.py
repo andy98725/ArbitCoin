@@ -14,6 +14,10 @@ sys.path.insert(0, os.path.dirname(__file__))
 from simulation.backtester import BacktestEngine, BacktestConfig
 from simulation.backtester_v2 import BacktestEngineV2, BacktestConfigV2
 
+# Add project root to path for config_loader
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from src.config_loader import load_config, apply_to_backtest_config
+
 
 def run_baseline():
     print("\n" + "#" * 70)
@@ -39,46 +43,9 @@ def run_enhanced():
     print("# ENHANCED STRATEGY V2: Arb + Prediction + Regime + Risk Mgmt")
     print("#" * 70)
 
+    cfg = load_config()
     config = BacktestConfigV2()
-    config.initial_usd = 10000.0
-    config.enable_cross_exchange_arb = True
-    config.enable_triangular_arb = True
-    config.enable_prediction_trading = True
-    config.min_arb_profit_pct = 0.06
-    config.max_trade_pct = 0.05
-    config.max_trade_usd = 500.0
-    config.prediction_trade_pct = 0.08
-    config.prediction_min_confidence = 0.40
-    config.prediction_score_threshold = 1.5
-    config.rebalance_interval_bars = 18
-    config.arb_cooldown_bars = 2
-    config.max_position_pct = 0.25
-    config.enable_regime_detection = True
-    config.enable_kelly_sizing = True
-    config.enable_stop_loss = True
-    config.stop_loss_pct = 0.03
-    config.take_profit_pct = 0.018
-    config.trailing_stop_pct = 0.025
-    config.trailing_stop_activation = 0.01
-    config.enable_rebalancing = True
-    config.target_cash_pct = 0.60
-    config.enable_pairs_trading = True
-    config.pairs_trade_pct = 0.04
-    config.pairs_max_hold_bars = 200
-    config.enable_multi_timeframe = True
-    config.mtf_confirmation_weight = 0.3
-    config.enable_adaptive_stops = True
-    config.atr_stop_multiplier = 1.5
-    config.enable_order_flow = True
-    config.order_flow_weight = 0.3
-    config.enable_dynamic_arb_threshold = True
-    config.arb_success_lookback = 50
-    config.enable_time_of_day = True
-    config.enable_performance_tracker = True
-    config.perf_window_bars = 288
-    config.enable_smart_routing = True
-    config.enable_correlation_limits = True
-    config.max_correlated_exposure_pct = 0.40
+    config = apply_to_backtest_config(cfg, config)
 
     engine = BacktestEngineV2(config)
     return engine.run()
