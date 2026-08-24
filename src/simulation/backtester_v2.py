@@ -85,6 +85,8 @@ class BacktestEngineV2:
         self._last_tri_arb_bar = -100
         self._entry_prices = {}
         self._high_water = {}
+        self._partial_tp_taken = {}
+        self._partial_sl_taken = {}
         self._pairs_positions = {}
         self._pairs_positions_age = {}
         self._pairs_trades_executed = 0
@@ -262,8 +264,19 @@ class BacktestEngineV2:
                 continue
 
             exchange = self.exchange_mgr.exchanges[best_ex]
+
+            if reason == "take_profit" and coin not in self._partial_tp_taken:
+                sell_amount = amount * 0.5
+                self._partial_tp_taken[coin] = True
+                self._high_water[coin] = price
+            elif reason == "stop_loss" and coin not in self._partial_sl_taken:
+                sell_amount = amount * 0.6
+                self._partial_sl_taken[coin] = True
+            else:
+                sell_amount = amount
+
             self.portfolio.execute_prediction_trade(
-                coin, "USD", amount, price,
+                coin, "USD", sell_amount, price,
                 exchange.fee_rate, best_ex, timestamp
             )
             if reason == "stop_loss":
@@ -272,8 +285,13 @@ class BacktestEngineV2:
             else:
                 self.take_profits_triggered += 1
                 self._prediction_pnl.append(1)
-            del self._entry_prices[coin]
-            self._high_water.pop(coin, None)
+
+            remaining = self.portfolio.get_balance(coin)
+            if remaining < 0.0001 or sell_amount >= amount * 0.99:
+                del self._entry_prices[coin]
+                self._high_water.pop(coin, None)
+                self._partial_tp_taken.pop(coin, None)
+                self._partial_sl_taken.pop(coin, None)
 
     def _get_dynamic_arb_threshold(self):
         if not self.config.enable_dynamic_arb_threshold or len(self._arb_results) < 10:
@@ -309,6 +327,13 @@ class BacktestEngineV2:
 
             profit_scale = min(arb["profit_pct"] / min_profit, 3.0)
             scaled_trade_pct = self.config.max_trade_pct * (0.7 + 0.3 * profit_scale)
+
+            signal = self.prediction.get_signal(pair)
+            if signal and signal["confidence"] > 0.3:
+                if signal["direction"] == "buy":
+                    scaled_trade_pct *= 1.15
+                elif signal["direction"] == "sell":
+                    scaled_trade_pct *= 0.85
 
             available = self.portfolio.get_balance(quote_coin)
             trade_amount = min(
@@ -620,6 +645,11 @@ class BacktestEngineV2:
                 exchange = self.exchange_mgr.exchanges[best_ex]
                 ask = exchange.get_ask(pair)
                 if not ask:
+                    continue
+
+                round_trip_fee_pct = 2 * exchange.fee_rate
+                expected_move_pct = signal["confidence"] * 0.02
+                if expected_move_pct < round_trip_fee_pct * 1.5:
                     continue
 
                 self.portfolio.execute_prediction_trade(
