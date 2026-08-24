@@ -57,6 +57,10 @@ class BacktestConfigV2:
         self.order_flow_weight = 0.3
         self.enable_dynamic_arb_threshold = True
         self.arb_success_lookback = 50
+        self.enable_time_of_day = True
+        self.enable_performance_tracker = True
+        self.perf_window_bars = 288
+        self.enable_smart_routing = True
 
 
 class BacktestEngineV2:
@@ -85,6 +89,8 @@ class BacktestEngineV2:
         self._mtf_cache = {}
         self._arb_results = []
         self._dynamic_stop_levels = {}
+        self._prediction_pnl = []
+        self._hourly_returns = {h: [] for h in range(24)}
 
     def run(self, start_date=None, end_date=None, interval_minutes=5):
         print("=" * 70)
@@ -184,6 +190,9 @@ class BacktestEngineV2:
             prices = self.exchange_mgr.get_current_prices()
             value = self.portfolio.record_equity(ts, prices)
 
+            if bar_count == len(timestamps) - 1:
+                self._liquidate_all_positions(ts)
+
             bar_count += 1
             if bar_count % report_interval == 0:
                 pct_done = bar_count / len(timestamps) * 100
@@ -252,8 +261,10 @@ class BacktestEngineV2:
             )
             if reason == "stop_loss":
                 self.stop_losses_triggered += 1
+                self._prediction_pnl.append(-1)
             else:
                 self.take_profits_triggered += 1
+                self._prediction_pnl.append(1)
             del self._entry_prices[coin]
             self._high_water.pop(coin, None)
 
@@ -522,17 +533,22 @@ class BacktestEngineV2:
                 elif current_vol < 0.3:
                     vol_scale = 1.3
 
+            tod_scale = self._get_time_of_day_scale(timestamp)
+            perf_scale = self._get_performance_scale()
+            combined_scale = vol_scale * tod_scale * perf_scale
+            combined_scale = max(0.3, min(combined_scale, 2.0))
+
             if signal["direction"] == "buy":
                 available = self.portfolio.get_balance(quote_coin)
                 prices = self.exchange_mgr.get_current_prices()
                 total_val = self.portfolio.total_value_usd(prices)
 
-                size_pct = self.config.prediction_trade_pct * effective_confidence * vol_scale
+                size_pct = self.config.prediction_trade_pct * effective_confidence * combined_scale
                 if self.config.enable_kelly_sizing:
                     est_win_prob = 0.5 + signal["confidence"] * 0.2
                     est_win_loss = 1.0 + signal["confidence"]
                     kelly_f = self._kelly_fraction(est_win_prob, est_win_loss)
-                    size_pct = min(size_pct, kelly_f * vol_scale)
+                    size_pct = min(size_pct, kelly_f * combined_scale)
 
                 trade_amount = min(
                     available * size_pct,
@@ -563,7 +579,7 @@ class BacktestEngineV2:
 
             elif signal["direction"] == "sell":
                 available = self.portfolio.get_balance(base_coin)
-                size_pct = self.config.prediction_trade_pct * effective_confidence * vol_scale
+                size_pct = self.config.prediction_trade_pct * effective_confidence * combined_scale
 
                 trade_amount = min(available * size_pct, available)
                 if trade_amount <= 0:
@@ -757,6 +773,50 @@ class BacktestEngineV2:
                     exchange.fee_rate, best_ex, timestamp, "rebalance"
                 )
                 self.rebalances_executed += 1
+
+    def _get_time_of_day_scale(self, timestamp):
+        if not self.config.enable_time_of_day:
+            return 1.0
+        hour = timestamp.hour
+        if 14 <= hour <= 19:
+            return 1.08
+        elif 2 <= hour <= 5:
+            return 0.9
+        return 1.0
+
+    def _get_performance_scale(self):
+        if not self.config.enable_performance_tracker or len(self._prediction_pnl) < 20:
+            return 1.0
+        recent = self._prediction_pnl[-self.config.perf_window_bars:]
+        wins = sum(1 for p in recent if p > 0)
+        rate = wins / len(recent)
+        if rate > 0.75:
+            return 1.15
+        elif rate < 0.4:
+            return 0.7
+        return 1.0
+
+    def _liquidate_all_positions(self, timestamp):
+        prices = self.exchange_mgr.get_current_prices()
+        for coin in list(self.portfolio.holdings.keys()):
+            if coin in ("USD", "USDC"):
+                continue
+            amount = self.portfolio.get_balance(coin)
+            if amount <= 0:
+                continue
+            pair = f"{coin}/USD"
+            price = prices.get(pair)
+            if not price:
+                continue
+            best_ex = self._find_best_exchange(pair, "sell")
+            if not best_ex:
+                continue
+            ex = self.exchange_mgr.exchanges[best_ex]
+            self.portfolio.execute_prediction_trade(
+                coin, "USD", amount, price, ex.fee_rate, best_ex, timestamp
+            )
+            self._entry_prices.pop(coin, None)
+            self._high_water.pop(coin, None)
 
     def _find_best_exchange(self, pair, direction):
         best_ex = None

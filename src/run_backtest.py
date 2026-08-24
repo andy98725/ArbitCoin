@@ -73,6 +73,10 @@ def run_enhanced():
     config.order_flow_weight = 0.3
     config.enable_dynamic_arb_threshold = True
     config.arb_success_lookback = 50
+    config.enable_time_of_day = True
+    config.enable_performance_tracker = True
+    config.perf_window_bars = 288
+    config.enable_smart_routing = True
 
     engine = BacktestEngineV2(config)
     return engine.run()
