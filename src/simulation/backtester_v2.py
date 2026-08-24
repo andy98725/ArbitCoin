@@ -364,7 +364,8 @@ class BacktestEngineV2:
                 },
             ]
 
-            self.portfolio.execute_cycle(cycle_trades, timestamp)
+            prices = self.exchange_mgr.get_current_prices()
+            self.portfolio.execute_cycle(cycle_trades, timestamp, prices)
             self.arb_trades_executed += 1
             executed_any = True
 
@@ -430,7 +431,8 @@ class BacktestEngineV2:
                     current_amount = current_amount * rate
 
                 if valid and current_amount > trade_amount:
-                    self.portfolio.execute_cycle(cycle_trades, timestamp)
+                    tri_prices = self.exchange_mgr.get_current_prices()
+                    self.portfolio.execute_cycle(cycle_trades, timestamp, tri_prices)
                     self.arb_trades_executed += 1
                     executed_any = True
 
@@ -753,34 +755,57 @@ class BacktestEngineV2:
             if trade_amount < 10.0:
                 continue
 
+            coin_a = pair_a.split("/")[0]
+            coin_b = pair_b.split("/")[0]
+
             if current_z < -self.config.pairs_zscore_entry:
-                coin_a = pair_a.split("/")[0]
-                best_ex = self._find_best_exchange(pair_a, "buy")
-                if best_ex:
-                    ex = self.exchange_mgr.exchanges[best_ex]
+                buy_ex = self._find_best_exchange(pair_a, "buy")
+                if buy_ex:
+                    ex = self.exchange_mgr.exchanges[buy_ex]
                     ask = ex.get_ask(pair_a)
                     if ask:
                         self.portfolio.execute_prediction_trade(
                             "USD", coin_a, trade_amount, 1.0 / ask,
-                            ex.fee_rate, best_ex, timestamp
+                            ex.fee_rate, buy_ex, timestamp
                         )
                         self._entry_prices[coin_a] = ask
+                        held_b = self.portfolio.get_balance(coin_b)
+                        if held_b > 0:
+                            sell_ex = self._find_best_exchange(pair_b, "sell")
+                            if sell_ex:
+                                sex = self.exchange_mgr.exchanges[sell_ex]
+                                bid = sex.get_bid(pair_b)
+                                if bid:
+                                    self.portfolio.execute_prediction_trade(
+                                        coin_b, "USD", held_b, bid,
+                                        sex.fee_rate, sell_ex, timestamp
+                                    )
                         self._pairs_positions[pair_key] = {"direction": "long_a", "entry_z": current_z}
                         self._pairs_positions_age[pair_key] = 0
                         self._pairs_trades_executed += 1
 
             elif current_z > self.config.pairs_zscore_entry:
-                coin_b = pair_b.split("/")[0]
-                best_ex = self._find_best_exchange(pair_b, "buy")
-                if best_ex:
-                    ex = self.exchange_mgr.exchanges[best_ex]
+                buy_ex = self._find_best_exchange(pair_b, "buy")
+                if buy_ex:
+                    ex = self.exchange_mgr.exchanges[buy_ex]
                     ask = ex.get_ask(pair_b)
                     if ask:
                         self.portfolio.execute_prediction_trade(
                             "USD", coin_b, trade_amount, 1.0 / ask,
-                            ex.fee_rate, best_ex, timestamp
+                            ex.fee_rate, buy_ex, timestamp
                         )
                         self._entry_prices[coin_b] = ask
+                        held_a = self.portfolio.get_balance(coin_a)
+                        if held_a > 0:
+                            sell_ex = self._find_best_exchange(pair_a, "sell")
+                            if sell_ex:
+                                sex = self.exchange_mgr.exchanges[sell_ex]
+                                bid = sex.get_bid(pair_a)
+                                if bid:
+                                    self.portfolio.execute_prediction_trade(
+                                        coin_a, "USD", held_a, bid,
+                                        sex.fee_rate, sell_ex, timestamp
+                                    )
                         self._pairs_positions[pair_key] = {"direction": "short_a", "entry_z": current_z}
                         self._pairs_positions_age[pair_key] = 0
                         self._pairs_trades_executed += 1

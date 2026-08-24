@@ -56,8 +56,10 @@ class Portfolio:
 
         return True
 
-    def execute_cycle(self, cycle_trades, timestamp):
-        initial_usd_equiv = self.total_value_usd({})
+    def execute_cycle(self, cycle_trades, timestamp, prices=None):
+        if prices is None:
+            prices = {}
+        initial_usd_equiv = self.total_value_usd(prices)
         for trade in cycle_trades:
             success = self.execute_trade(
                 trade["from_coin"], trade["to_coin"],
@@ -67,7 +69,7 @@ class Portfolio:
             )
             if not success:
                 return False
-        final_usd_equiv = self.total_value_usd({})
+        final_usd_equiv = self.total_value_usd(prices)
         if final_usd_equiv > initial_usd_equiv:
             self.winning_trades += 1
         else:
