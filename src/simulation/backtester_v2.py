@@ -537,7 +537,12 @@ class BacktestEngineV2:
                     effective_confidence *= 0.8
 
             vol_scale = 1.0
-            if self.config.enable_regime_detection:
+            atr_pct = self.prediction.get_atr_pct(pair)
+            if atr_pct is not None and atr_pct > 0:
+                target_risk = 0.005
+                vol_scale = target_risk / max(atr_pct, 0.001)
+                vol_scale = max(0.4, min(vol_scale, 1.8))
+            elif self.config.enable_regime_detection:
                 regime_info = self.regime.get_regime(pair)
                 current_vol = regime_info.get("vol_20d", 0.5)
                 if current_vol > 0.8:
@@ -545,9 +550,22 @@ class BacktestEngineV2:
                 elif current_vol < 0.3:
                     vol_scale = 1.3
 
+            btc_sentiment = 1.0
+            if pair != "BTC/USD":
+                btc_sig = self.prediction.get_signal("BTC/USD")
+                if btc_sig and btc_sig["confidence"] > 0.3:
+                    if signal["direction"] == "buy" and btc_sig["direction"] == "buy":
+                        btc_sentiment = 1.1
+                    elif signal["direction"] == "buy" and btc_sig["direction"] == "sell":
+                        btc_sentiment = 0.8
+                    elif signal["direction"] == "sell" and btc_sig["direction"] == "sell":
+                        btc_sentiment = 1.1
+                    elif signal["direction"] == "sell" and btc_sig["direction"] == "buy":
+                        btc_sentiment = 0.8
+
             tod_scale = self._get_time_of_day_scale(timestamp)
             perf_scale = self._get_performance_scale()
-            combined_scale = vol_scale * tod_scale * perf_scale
+            combined_scale = vol_scale * tod_scale * perf_scale * btc_sentiment
             combined_scale = max(0.3, min(combined_scale, 2.0))
 
             if signal["direction"] == "buy":
