@@ -140,6 +140,7 @@ class PredictionEngine:
                 score -= 0.5
 
         rsi_val = features.get("rsi_14", 50)
+        rsi_7_val = features.get("rsi_7", 50)
         if not np.isnan(rsi_val):
             if rsi_val < 25:
                 score += 2.5
@@ -153,6 +154,14 @@ class PredictionEngine:
             elif rsi_val > 65:
                 score -= 1.5
                 reasons.append(f"RSI overbought ({rsi_val:.0f})")
+
+        if not np.isnan(rsi_7_val) and not np.isnan(rsi_val):
+            if rsi_7_val < 30 and rsi_val < 40:
+                score += 0.75
+                reasons.append("Short-term RSI confirms oversold")
+            elif rsi_7_val > 70 and rsi_val > 60:
+                score -= 0.75
+                reasons.append("Short-term RSI confirms overbought")
 
         bb_pos = features.get("bb_position", 0.5)
         if not np.isnan(bb_pos):
@@ -209,6 +218,19 @@ class PredictionEngine:
             elif zscore > 1.2:
                 score -= 2.0
                 reasons.append(f"Z-score overbought ({zscore:.1f})")
+
+        vwap_diff = features.get("vwap_diff", 0)
+        if not np.isnan(vwap_diff):
+            if vwap_diff < -0.015:
+                score += 1.5
+                reasons.append(f"Below VWAP ({vwap_diff:.3f})")
+            elif vwap_diff < -0.005:
+                score += 0.5
+            elif vwap_diff > 0.015:
+                score -= 1.5
+                reasons.append(f"Above VWAP ({vwap_diff:.3f})")
+            elif vwap_diff > 0.005:
+                score -= 0.5
 
         vol_ratio = features.get("volume_ratio", 1.0)
         if not np.isnan(vol_ratio) and vol_ratio > 1.5:

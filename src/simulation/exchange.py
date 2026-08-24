@@ -38,6 +38,15 @@ class SimulatedExchange:
             return None
         return self.current_prices[pair]["mid"]
 
+    def get_spread_pct(self, pair):
+        if pair not in self.current_prices:
+            return None
+        data = self.current_prices[pair]
+        mid = data["mid"]
+        if mid <= 0:
+            return None
+        return (data["ask"] - data["bid"]) / mid
+
     def simulate_buy(self, pair, usd_amount):
         if pair not in self.current_prices:
             return None
