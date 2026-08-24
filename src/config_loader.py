@@ -48,12 +48,14 @@ def apply_to_backtest_config(cfg, backtest_config):
     backtest_config.arb_cooldown_bars = arb.get("cooldown_bars", 2)
     backtest_config.enable_dynamic_arb_threshold = arb.get("enable_dynamic_threshold", True)
     backtest_config.arb_success_lookback = arb.get("success_lookback", 50)
+    backtest_config.arb_max_per_scan = arb.get("max_per_scan", 8)
 
     pred = cfg.get("prediction", {})
     backtest_config.enable_prediction_trading = pred.get("enabled", True)
     backtest_config.prediction_trade_pct = pred.get("trade_pct", 0.08)
     backtest_config.prediction_min_confidence = pred.get("min_confidence", 0.40)
     backtest_config.prediction_score_threshold = pred.get("score_threshold", 1.5)
+    backtest_config.prediction_top_n = pred.get("top_opportunities", 3)
 
     risk = cfg.get("risk_management", {})
     backtest_config.enable_stop_loss = risk.get("enable_stop_loss", True)

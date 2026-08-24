@@ -49,6 +49,7 @@ class BacktestConfigV2:
         self.target_cash_pct = 0.60
         self.rebalance_threshold = 0.10
         self.prediction_score_threshold = 2.0
+        self.prediction_top_n = 3
         self.enable_multi_timeframe = True
         self.mtf_confirmation_weight = 0.3
         self.enable_adaptive_stops = True
@@ -57,6 +58,7 @@ class BacktestConfigV2:
         self.order_flow_weight = 0.3
         self.enable_dynamic_arb_threshold = True
         self.arb_success_lookback = 50
+        self.arb_max_per_scan = 8
         self.enable_time_of_day = True
         self.enable_performance_tracker = True
         self.perf_window_bars = 288
@@ -315,7 +317,7 @@ class BacktestEngineV2:
 
         base_min_profit = self._get_dynamic_arb_threshold()
 
-        for arb in arbs[:4]:
+        for arb in arbs[:self.config.arb_max_per_scan]:
             min_profit = base_min_profit
             if self.config.enable_regime_detection:
                 regime_info = self.regime.get_regime(arb["pair"])
@@ -510,7 +512,7 @@ class BacktestEngineV2:
         return score
 
     def _execute_prediction_trades(self, timestamp):
-        opportunities = self.prediction.get_top_opportunities(n=3)
+        opportunities = self.prediction.get_top_opportunities(n=self.config.prediction_top_n)
 
         for signal in opportunities:
             if signal["confidence"] < self.config.prediction_min_confidence:
