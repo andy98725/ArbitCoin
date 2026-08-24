@@ -37,11 +37,20 @@ class BacktestConfigV2:
         self.enable_kelly_sizing = True
         self.enable_stop_loss = True
         self.stop_loss_pct = 0.03
-        self.take_profit_pct = 0.015
+        self.take_profit_pct = 0.018
+        self.trailing_stop_pct = 0.025
+        self.trailing_stop_activation = 0.01
+        self.enable_pairs_trading = True
+        self.pairs_zscore_entry = 2.0
+        self.pairs_zscore_exit = 0.5
+        self.pairs_trade_pct = 0.04
+        self.pairs_max_hold_bars = 200
         self.enable_rebalancing = True
         self.target_cash_pct = 0.60
         self.rebalance_threshold = 0.10
         self.prediction_score_threshold = 2.0
+        self.enable_multi_timeframe = True
+        self.mtf_confirmation_weight = 0.3
 
 
 class BacktestEngineV2:
@@ -62,7 +71,12 @@ class BacktestEngineV2:
         self.rebalances_executed = 0
         self._last_arb_bar = -100
         self._entry_prices = {}
+        self._high_water = {}
+        self._pairs_positions = {}
+        self._pairs_positions_age = {}
+        self._pairs_trades_executed = 0
         self._regime_log = []
+        self._mtf_cache = {}
 
     def run(self, start_date=None, end_date=None, interval_minutes=5):
         print("=" * 70)
@@ -110,6 +124,8 @@ class BacktestEngineV2:
             features.append("StopLoss")
         if self.config.enable_rebalancing:
             features.append("Rebalance")
+        if self.config.enable_pairs_trading:
+            features.append("PairsTrading")
 
         print(f"\n[3/4] Running simulation...")
         print(f"  Initial portfolio: ${self.config.initial_usd:,.2f}")
@@ -134,6 +150,8 @@ class BacktestEngineV2:
                         self.prediction.update(pair_name, pair_df)
                         if self.config.enable_regime_detection:
                             self.regime.detect(pair_name, pair_df)
+                        if self.config.enable_multi_timeframe:
+                            self._mtf_cache[pair_name] = self._compute_mtf_score(pair_name, df, ts)
 
             if self.config.enable_stop_loss:
                 self._check_stop_losses(ts)
@@ -148,6 +166,9 @@ class BacktestEngineV2:
 
             if do_prediction_update and self.config.enable_prediction_trading:
                 self._execute_prediction_trades(ts)
+
+            if self.config.enable_pairs_trading and bar_count % self.config.rebalance_interval_bars == 0:
+                self._execute_pairs_trades(ts, all_pair_data, bar_count, len(timestamps))
 
             if self.config.enable_rebalancing and bar_count % (self.config.rebalance_interval_bars * 4) == 0:
                 self._rebalance_portfolio(ts)
@@ -184,11 +205,17 @@ class BacktestEngineV2:
             if current_price is None:
                 continue
 
+            if coin not in self._high_water or current_price > self._high_water[coin]:
+                self._high_water[coin] = current_price
+
             pnl_pct = (current_price - entry_price) / entry_price
+            trail_pct = (current_price - self._high_water[coin]) / self._high_water[coin]
 
             if pnl_pct < -self.config.stop_loss_pct:
                 coins_to_sell.append((coin, pair, current_price, "stop_loss"))
-            elif hasattr(self.config, 'take_profit_pct') and pnl_pct > self.config.take_profit_pct:
+            elif pnl_pct > self.config.trailing_stop_activation and trail_pct < -self.config.trailing_stop_pct:
+                coins_to_sell.append((coin, pair, current_price, "trailing_stop"))
+            elif pnl_pct > self.config.take_profit_pct:
                 coins_to_sell.append((coin, pair, current_price, "take_profit"))
 
         for coin, pair, price, reason in coins_to_sell:
@@ -210,6 +237,7 @@ class BacktestEngineV2:
             else:
                 self.take_profits_triggered += 1
             del self._entry_prices[coin]
+            self._high_water.pop(coin, None)
 
     def _execute_cross_exchange_arbs(self, timestamp):
         arbs = self.exchange_mgr.find_cross_exchange_arbs()
@@ -354,6 +382,48 @@ class BacktestEngineV2:
 
         return executed_any
 
+    def _compute_mtf_score(self, pair_name, df, timestamp):
+        if len(df) < 120:
+            return 0.0
+
+        mask = df["timestamp"] <= timestamp
+        pair_df = df[mask].tail(500)
+        if len(pair_df) < 120:
+            return 0.0
+
+        close = pair_df["close"].values
+        returns_20 = (close[-1] - close[-20]) / close[-20] if len(close) >= 20 else 0
+        returns_60 = (close[-1] - close[-60]) / close[-60] if len(close) >= 60 else 0
+        returns_120 = (close[-1] - close[-120]) / close[-120] if len(close) >= 120 else 0
+
+        score = 0.0
+        if returns_20 > 0.01:
+            score += 1.0
+        elif returns_20 < -0.01:
+            score -= 1.0
+
+        if returns_60 > 0.02:
+            score += 0.5
+        elif returns_60 < -0.02:
+            score -= 0.5
+
+        if returns_120 > 0.03:
+            score += 0.5
+        elif returns_120 < -0.03:
+            score -= 0.5
+
+        log_close = np.log(close[-100:])
+        roll_mean = np.mean(log_close)
+        roll_std = np.std(log_close)
+        if roll_std > 1e-8:
+            zscore = (log_close[-1] - roll_mean) / roll_std
+            if zscore < -1.5:
+                score += 1.5
+            elif zscore > 1.5:
+                score -= 1.5
+
+        return score
+
     def _execute_prediction_trades(self, timestamp):
         opportunities = self.prediction.get_top_opportunities(n=3)
 
@@ -377,6 +447,17 @@ class BacktestEngineV2:
                 regime_weight = self.regime.get_prediction_weight(pair)
 
             effective_confidence = signal["confidence"] * regime_weight
+
+            if self.config.enable_multi_timeframe and pair in self._mtf_cache:
+                mtf_score = self._mtf_cache[pair]
+                if signal["direction"] == "buy" and mtf_score < -1.0:
+                    effective_confidence *= 0.5
+                elif signal["direction"] == "sell" and mtf_score > 1.0:
+                    effective_confidence *= 0.5
+                elif signal["direction"] == "buy" and mtf_score > 1.0:
+                    effective_confidence *= 1.0 + self.config.mtf_confirmation_weight
+                elif signal["direction"] == "sell" and mtf_score < -1.0:
+                    effective_confidence *= 1.0 + self.config.mtf_confirmation_weight
 
             if signal["direction"] == "buy":
                 available = self.portfolio.get_balance(quote_coin)
@@ -441,6 +522,139 @@ class BacktestEngineV2:
                 if base_coin in self._entry_prices and available - trade_amount < 0.0001:
                     del self._entry_prices[base_coin]
                 self.prediction_trades_executed += 1
+
+    def _close_pairs_position(self, pair_key, timestamp, prices):
+        if pair_key not in self._pairs_positions:
+            return
+        pos = self._pairs_positions[pair_key]
+        pair_a, pair_b = pair_key.split("|")
+        coin_a = pair_a.split("/")[0]
+        coin_b = pair_b.split("/")[0]
+
+        if pos["direction"] == "long_a":
+            amt = self.portfolio.get_balance(coin_a)
+            if amt > 0:
+                price = prices.get(pair_a)
+                if price:
+                    best_ex = self._find_best_exchange(pair_a, "sell")
+                    if best_ex:
+                        ex = self.exchange_mgr.exchanges[best_ex]
+                        self.portfolio.execute_prediction_trade(
+                            coin_a, "USD", amt, price, ex.fee_rate, best_ex, timestamp
+                        )
+        else:
+            amt = self.portfolio.get_balance(coin_b)
+            if amt > 0:
+                price = prices.get(pair_b)
+                if price:
+                    best_ex = self._find_best_exchange(pair_b, "sell")
+                    if best_ex:
+                        ex = self.exchange_mgr.exchanges[best_ex]
+                        self.portfolio.execute_prediction_trade(
+                            coin_b, "USD", amt, price, ex.fee_rate, best_ex, timestamp
+                        )
+
+        del self._pairs_positions[pair_key]
+        self._pairs_positions_age.pop(pair_key, None)
+        self._pairs_trades_executed += 1
+
+    def _execute_pairs_trades(self, timestamp, all_pair_data, bar_count=0, total_bars=0):
+        correlated_pairs = [
+            ("BTC/USD", "ETH/USD"),
+            ("BTC/USD", "LTC/USD"),
+            ("ETH/USD", "LINK/USD"),
+            ("BTC/USD", "BCH/USD"),
+        ]
+
+        prices = self.exchange_mgr.get_current_prices()
+        total_val = self.portfolio.total_value_usd(prices)
+
+        bars_remaining = total_bars - bar_count if total_bars > 0 else 9999
+        if bars_remaining < 50:
+            for pk in list(self._pairs_positions.keys()):
+                self._close_pairs_position(pk, timestamp, prices)
+            return
+
+        for pair_key in list(self._pairs_positions_age.keys()):
+            self._pairs_positions_age[pair_key] = self._pairs_positions_age.get(pair_key, 0) + self.config.rebalance_interval_bars
+            if self._pairs_positions_age[pair_key] > self.config.pairs_max_hold_bars:
+                self._close_pairs_position(pair_key, timestamp, prices)
+
+        for pair_a, pair_b in correlated_pairs:
+            if pair_a not in all_pair_data or pair_b not in all_pair_data:
+                continue
+
+            df_a = all_pair_data[pair_a]
+            df_b = all_pair_data[pair_b]
+            mask_a = df_a["timestamp"] <= timestamp
+            mask_b = df_b["timestamp"] <= timestamp
+            if mask_a.sum() < 100 or mask_b.sum() < 100:
+                continue
+
+            close_a = df_a.loc[mask_a, "close"].tail(100).values
+            close_b = df_b.loc[mask_b, "close"].tail(100).values
+            n = min(len(close_a), len(close_b))
+            if n < 100:
+                continue
+
+            log_ratio = np.log(close_a[-n:] / close_b[-n:])
+            mean_ratio = np.mean(log_ratio)
+            std_ratio = np.std(log_ratio)
+            if std_ratio < 1e-8:
+                continue
+
+            current_z = (log_ratio[-1] - mean_ratio) / std_ratio
+            pair_key = f"{pair_a}|{pair_b}"
+
+            if pair_key in self._pairs_positions:
+                pos = self._pairs_positions[pair_key]
+                if (pos["direction"] == "long_a" and current_z > -self.config.pairs_zscore_exit) or \
+                   (pos["direction"] == "short_a" and current_z < self.config.pairs_zscore_exit):
+                    self._close_pairs_position(pair_key, timestamp, prices)
+                continue
+
+            if abs(current_z) < self.config.pairs_zscore_entry:
+                continue
+
+            trade_amount = min(
+                self.portfolio.get_balance("USD") * self.config.pairs_trade_pct,
+                self.config.max_trade_usd,
+                total_val * self.config.max_position_pct,
+            )
+            if trade_amount < 10.0:
+                continue
+
+            if current_z < -self.config.pairs_zscore_entry:
+                coin_a = pair_a.split("/")[0]
+                best_ex = self._find_best_exchange(pair_a, "buy")
+                if best_ex:
+                    ex = self.exchange_mgr.exchanges[best_ex]
+                    ask = ex.get_ask(pair_a)
+                    if ask:
+                        self.portfolio.execute_prediction_trade(
+                            "USD", coin_a, trade_amount, 1.0 / ask,
+                            ex.fee_rate, best_ex, timestamp
+                        )
+                        self._entry_prices[coin_a] = ask
+                        self._pairs_positions[pair_key] = {"direction": "long_a", "entry_z": current_z}
+                        self._pairs_positions_age[pair_key] = 0
+                        self._pairs_trades_executed += 1
+
+            elif current_z > self.config.pairs_zscore_entry:
+                coin_b = pair_b.split("/")[0]
+                best_ex = self._find_best_exchange(pair_b, "buy")
+                if best_ex:
+                    ex = self.exchange_mgr.exchanges[best_ex]
+                    ask = ex.get_ask(pair_b)
+                    if ask:
+                        self.portfolio.execute_prediction_trade(
+                            "USD", coin_b, trade_amount, 1.0 / ask,
+                            ex.fee_rate, best_ex, timestamp
+                        )
+                        self._entry_prices[coin_b] = ask
+                        self._pairs_positions[pair_key] = {"direction": "short_a", "entry_z": current_z}
+                        self._pairs_positions_age[pair_key] = 0
+                        self._pairs_trades_executed += 1
 
     def _rebalance_portfolio(self, timestamp):
         prices = self.exchange_mgr.get_current_prices()
@@ -526,6 +740,7 @@ class BacktestEngineV2:
                 "prediction_trades_executed": self.prediction_trades_executed,
                 "stop_losses_triggered": self.stop_losses_triggered,
                 "take_profits_triggered": self.take_profits_triggered,
+                "pairs_trades_executed": self._pairs_trades_executed,
                 "rebalances_executed": self.rebalances_executed,
             },
             "equity_curve": self.portfolio.equity_curve,
@@ -583,6 +798,7 @@ class BacktestEngineV2:
         print(f"  Prediction Trades:     {m['prediction_trades_executed']:>8d}")
         print(f"  Stop Losses Hit:       {m['stop_losses_triggered']:>8d}")
         print(f"  Take Profits Hit:      {m['take_profits_triggered']:>8d}")
+        print(f"  Pairs Trades:          {m['pairs_trades_executed']:>8d}")
         print(f"  Rebalances:            {m['rebalances_executed']:>8d}")
 
         print(f"\n  Final Holdings:")

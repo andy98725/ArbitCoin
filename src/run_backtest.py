@@ -57,8 +57,16 @@ def run_enhanced():
     config.enable_kelly_sizing = True
     config.enable_stop_loss = True
     config.stop_loss_pct = 0.03
+    config.take_profit_pct = 0.018
+    config.trailing_stop_pct = 0.025
+    config.trailing_stop_activation = 0.01
     config.enable_rebalancing = True
     config.target_cash_pct = 0.60
+    config.enable_pairs_trading = True
+    config.pairs_trade_pct = 0.04
+    config.pairs_max_hold_bars = 200
+    config.enable_multi_timeframe = True
+    config.mtf_confirmation_weight = 0.3
 
     engine = BacktestEngineV2(config)
     return engine.run()
@@ -89,6 +97,7 @@ def compare_results(baseline, enhanced):
         ("Prediction Trades", str(bm['prediction_trades_executed']), str(em['prediction_trades_executed'])),
         ("Stop Losses", "N/A", str(em.get('stop_losses_triggered', 0))),
         ("Take Profits", "N/A", str(em.get('take_profits_triggered', 0))),
+        ("Pairs Trades", "N/A", str(em.get('pairs_trades_executed', 0))),
         ("Rebalances", "N/A", str(em.get('rebalances_executed', 0))),
     ]
 
