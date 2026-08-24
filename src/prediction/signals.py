@@ -104,6 +104,7 @@ class PredictionEngine:
     def __init__(self):
         self.pair_features = {}
         self.pair_signals = {}
+        self._signal_history = {}
 
     def update(self, pair_name, df):
         if len(df) < 60:
@@ -115,6 +116,11 @@ class PredictionEngine:
         latest = features.iloc[-1]
         signal = self._generate_signal(latest, pair_name)
         self.pair_signals[pair_name] = signal
+        if pair_name not in self._signal_history:
+            self._signal_history[pair_name] = []
+        self._signal_history[pair_name].append(signal["score"])
+        if len(self._signal_history[pair_name]) > 10:
+            self._signal_history[pair_name] = self._signal_history[pair_name][-10:]
 
     def _generate_signal(self, features, pair_name):
         score = 0.0
@@ -234,3 +240,13 @@ class PredictionEngine:
         signals = list(self.pair_signals.values())
         signals.sort(key=lambda s: abs(s["score"]) * s["confidence"], reverse=True)
         return [s for s in signals[:n] if s["direction"] != "hold"]
+
+    def get_signal_momentum(self, pair_name):
+        if pair_name not in self._signal_history:
+            return 0.0
+        history = self._signal_history[pair_name]
+        if len(history) < 2:
+            return 0.0
+        recent = history[-1]
+        prev = history[-2]
+        return recent - prev

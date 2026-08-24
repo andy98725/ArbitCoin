@@ -459,17 +459,36 @@ class BacktestEngineV2:
                 elif signal["direction"] == "sell" and mtf_score < -1.0:
                     effective_confidence *= 1.0 + self.config.mtf_confirmation_weight
 
+            sig_momentum = self.prediction.get_signal_momentum(pair)
+            if signal["direction"] == "buy" and sig_momentum > 0.5:
+                effective_confidence *= 1.15
+            elif signal["direction"] == "sell" and sig_momentum < -0.5:
+                effective_confidence *= 1.15
+            elif signal["direction"] == "buy" and sig_momentum < -1.0:
+                effective_confidence *= 0.7
+            elif signal["direction"] == "sell" and sig_momentum > 1.0:
+                effective_confidence *= 0.7
+
+            vol_scale = 1.0
+            if self.config.enable_regime_detection:
+                regime_info = self.regime.get_regime(pair)
+                current_vol = regime_info.get("vol_20d", 0.5)
+                if current_vol > 0.8:
+                    vol_scale = 0.6
+                elif current_vol < 0.3:
+                    vol_scale = 1.3
+
             if signal["direction"] == "buy":
                 available = self.portfolio.get_balance(quote_coin)
                 prices = self.exchange_mgr.get_current_prices()
                 total_val = self.portfolio.total_value_usd(prices)
 
-                size_pct = self.config.prediction_trade_pct * effective_confidence
+                size_pct = self.config.prediction_trade_pct * effective_confidence * vol_scale
                 if self.config.enable_kelly_sizing:
                     est_win_prob = 0.5 + signal["confidence"] * 0.2
                     est_win_loss = 1.0 + signal["confidence"]
                     kelly_f = self._kelly_fraction(est_win_prob, est_win_loss)
-                    size_pct = min(size_pct, kelly_f)
+                    size_pct = min(size_pct, kelly_f * vol_scale)
 
                 trade_amount = min(
                     available * size_pct,
@@ -500,7 +519,7 @@ class BacktestEngineV2:
 
             elif signal["direction"] == "sell":
                 available = self.portfolio.get_balance(base_coin)
-                size_pct = self.config.prediction_trade_pct * effective_confidence
+                size_pct = self.config.prediction_trade_pct * effective_confidence * vol_scale
 
                 trade_amount = min(available * size_pct, available)
                 if trade_amount <= 0:

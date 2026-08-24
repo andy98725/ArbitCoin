@@ -69,22 +69,22 @@ class RegimeDetector:
         if regime == "high_volatility":
             return {
                 "position_scale": 0.5,
-                "arb_threshold_mult": 1.5,
-                "prediction_weight": 0.3,
-                "stop_loss_mult": 2.0,
+                "arb_threshold_mult": 1.3,
+                "prediction_weight": 0.4,
+                "stop_loss_mult": 1.8,
             }
         elif regime == "trending":
             return {
-                "position_scale": 1.2,
+                "position_scale": 1.3,
                 "arb_threshold_mult": 0.8,
                 "prediction_weight": 1.5,
                 "stop_loss_mult": 1.0,
             }
         elif regime == "mean_reverting":
             return {
-                "position_scale": 1.0,
-                "arb_threshold_mult": 1.0,
-                "prediction_weight": 0.8,
+                "position_scale": 1.1,
+                "arb_threshold_mult": 0.9,
+                "prediction_weight": 1.2,
                 "stop_loss_mult": 0.8,
             }
         else:

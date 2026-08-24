@@ -1,33 +1,33 @@
 {
   "summary": {
     "initial_usd": 10000.0,
-    "final_usd": 10354.407923118382,
-    "return_pct": 3.5440792311838236,
-    "total_trades": 714,
-    "winning_trades": 315,
-    "losing_trades": 42,
-    "win_rate": 88.23529411764706,
-    "total_fees_paid": 1103.7982113821336,
+    "final_usd": 10318.002739318887,
+    "return_pct": 3.180027393188866,
+    "total_trades": 754,
+    "winning_trades": 330,
+    "losing_trades": 43,
+    "win_rate": 88.47184986595174,
+    "total_fees_paid": 1179.9676509800322,
     "holdings": {
-      "USD": 10354.407923118382,
-      "BTC": 6.938893903907228e-18,
+      "USD": 10318.002739318887,
       "LTC": 8.881784197001252e-16,
-      "AAVE": 8.881784197001252e-16,
-      "ETH": 8.326672684688674e-17,
+      "ETH": 0.0,
+      "AAVE": 0.0,
+      "BTC": 8.673617379884035e-19,
       "BCH": 2.220446049250313e-16,
-      "XLM": 0.0,
-      "LINK": 7.105427357601002e-15,
-      "ZEC": 0.0
+      "ZEC": 7.105427357601002e-15,
+      "LINK": 0.0,
+      "XLM": 0.0
     }
   },
   "metrics": {
-    "max_drawdown_pct": 0.0,
-    "sharpe_ratio": 56.76390283137725,
-    "sortino_ratio": 0,
-    "arb_opportunities_found": 456,
-    "arb_trades_executed": 357,
-    "cross_exchange_arbs_found": 6645,
-    "triangular_arbs_found": 9,
+    "max_drawdown_pct": 0.11569079043540653,
+    "sharpe_ratio": 51.085391096657155,
+    "sortino_ratio": 44.476206742079306,
+    "arb_opportunities_found": 502,
+    "arb_trades_executed": 373,
+    "cross_exchange_arbs_found": 7500,
+    "triangular_arbs_found": 71,
     "prediction_trades_executed": 0
   }
 }
