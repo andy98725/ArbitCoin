@@ -1,0 +1,38 @@
+{
+  "summary": {
+    "initial_usd": 10000.0,
+    "final_usd": 10580.821874263667,
+    "return_pct": 5.808218742636672,
+    "total_trades": 1020,
+    "winning_trades": 422,
+    "losing_trades": 43,
+    "win_rate": 90.75268817204301,
+    "total_fees_paid": 1132.1008202629262,
+    "holdings": {
+      "USD": 5514.0800483589155,
+      "BTC": 1.5681900222830337e-18,
+      "LINK": 0.0,
+      "BCH": 0.0,
+      "ZEC": 0.0,
+      "ETH": 0.0,
+      "LTC": 0.0,
+      "XLM": 0.0,
+      "USDC": 5066.741825904751,
+      "AAVE": 0.0
+    }
+  },
+  "metrics": {
+    "max_drawdown_pct": 0.22026064748514973,
+    "sharpe_ratio": 33.35748316048147,
+    "sortino_ratio": 44.028369966146016,
+    "calmar_ratio": 26.36975242265312,
+    "arb_opportunities_found": 469,
+    "arb_trades_executed": 346,
+    "cross_exchange_arbs_found": 6345,
+    "triangular_arbs_found": 15,
+    "prediction_trades_executed": 217,
+    "stop_losses_triggered": 1,
+    "take_profits_triggered": 108,
+    "rebalances_executed": 0
+  }
+}
