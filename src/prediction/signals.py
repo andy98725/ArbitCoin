@@ -250,3 +250,29 @@ class PredictionEngine:
         recent = history[-1]
         prev = history[-2]
         return recent - prev
+
+    def get_atr_pct(self, pair_name):
+        feat = self.pair_features.get(pair_name)
+        if feat is None or "atr_14" not in feat.columns:
+            return None
+        val = feat["atr_14"].iloc[-1]
+        return val if not np.isnan(val) else None
+
+    def get_order_flow_signal(self, pair_name):
+        feat = self.pair_features.get(pair_name)
+        if feat is None:
+            return 0.0
+        vr = feat.get("volume_ratio")
+        if vr is None:
+            return 0.0
+        latest_vr = vr.iloc[-1] if not isinstance(vr, float) else vr
+        if np.isnan(latest_vr):
+            return 0.0
+        ret_1 = feat["returns_1"].iloc[-1] if "returns_1" in feat.columns else 0
+        if np.isnan(ret_1):
+            return 0.0
+        if latest_vr > 1.5 and ret_1 > 0.005:
+            return 1.0
+        elif latest_vr > 1.5 and ret_1 < -0.005:
+            return -1.0
+        return 0.0

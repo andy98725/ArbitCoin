@@ -51,6 +51,12 @@ class BacktestConfigV2:
         self.prediction_score_threshold = 2.0
         self.enable_multi_timeframe = True
         self.mtf_confirmation_weight = 0.3
+        self.enable_adaptive_stops = True
+        self.atr_stop_multiplier = 1.5
+        self.enable_order_flow = True
+        self.order_flow_weight = 0.3
+        self.enable_dynamic_arb_threshold = True
+        self.arb_success_lookback = 50
 
 
 class BacktestEngineV2:
@@ -77,6 +83,8 @@ class BacktestEngineV2:
         self._pairs_trades_executed = 0
         self._regime_log = []
         self._mtf_cache = {}
+        self._arb_results = []
+        self._dynamic_stop_levels = {}
 
     def run(self, start_date=None, end_date=None, interval_minutes=5):
         print("=" * 70)
@@ -211,11 +219,21 @@ class BacktestEngineV2:
             pnl_pct = (current_price - entry_price) / entry_price
             trail_pct = (current_price - self._high_water[coin]) / self._high_water[coin]
 
-            if pnl_pct < -self.config.stop_loss_pct:
+            stop_pct = self.config.stop_loss_pct
+            tp_pct = self.config.take_profit_pct
+            if self.config.enable_adaptive_stops:
+                atr_pct = self.prediction.get_atr_pct(pair)
+                if atr_pct is not None and atr_pct > 0:
+                    stop_pct = max(atr_pct * self.config.atr_stop_multiplier, self.config.stop_loss_pct * 0.5)
+                    stop_pct = min(stop_pct, self.config.stop_loss_pct * 2.0)
+                    tp_pct = max(atr_pct * 2.0, self.config.take_profit_pct * 0.8)
+                    tp_pct = min(tp_pct, self.config.take_profit_pct * 2.5)
+
+            if pnl_pct < -stop_pct:
                 coins_to_sell.append((coin, pair, current_price, "stop_loss"))
             elif pnl_pct > self.config.trailing_stop_activation and trail_pct < -self.config.trailing_stop_pct:
                 coins_to_sell.append((coin, pair, current_price, "trailing_stop"))
-            elif pnl_pct > self.config.take_profit_pct:
+            elif pnl_pct > tp_pct:
                 coins_to_sell.append((coin, pair, current_price, "take_profit"))
 
         for coin, pair, price, reason in coins_to_sell:
@@ -239,13 +257,26 @@ class BacktestEngineV2:
             del self._entry_prices[coin]
             self._high_water.pop(coin, None)
 
+    def _get_dynamic_arb_threshold(self):
+        if not self.config.enable_dynamic_arb_threshold or len(self._arb_results) < 10:
+            return self.config.min_arb_profit_pct
+        recent = self._arb_results[-self.config.arb_success_lookback:]
+        win_rate = sum(1 for r in recent if r > 0) / len(recent)
+        if win_rate > 0.9:
+            return self.config.min_arb_profit_pct * 0.8
+        elif win_rate < 0.7:
+            return self.config.min_arb_profit_pct * 1.3
+        return self.config.min_arb_profit_pct
+
     def _execute_cross_exchange_arbs(self, timestamp):
         arbs = self.exchange_mgr.find_cross_exchange_arbs()
         self.cross_ex_arbs_found += len(arbs)
         executed_any = False
 
+        base_min_profit = self._get_dynamic_arb_threshold()
+
         for arb in arbs[:2]:
-            min_profit = self.config.min_arb_profit_pct
+            min_profit = base_min_profit
             if self.config.enable_regime_detection:
                 regime_info = self.regime.get_regime(arb["pair"])
                 min_profit *= regime_info["params"]["arb_threshold_mult"]
@@ -288,8 +319,10 @@ class BacktestEngineV2:
             if not sell_result:
                 continue
 
-            if sell_result["usd"] - trade_amount <= 0:
+            net_profit = sell_result["usd"] - trade_amount
+            if net_profit <= 0:
                 continue
+            self._arb_results.append(net_profit)
 
             cycle_trades = [
                 {
@@ -468,6 +501,17 @@ class BacktestEngineV2:
                 effective_confidence *= 0.7
             elif signal["direction"] == "sell" and sig_momentum > 1.0:
                 effective_confidence *= 0.7
+
+            if self.config.enable_order_flow:
+                of_signal = self.prediction.get_order_flow_signal(pair)
+                if signal["direction"] == "buy" and of_signal > 0:
+                    effective_confidence *= 1.0 + self.config.order_flow_weight
+                elif signal["direction"] == "sell" and of_signal < 0:
+                    effective_confidence *= 1.0 + self.config.order_flow_weight
+                elif signal["direction"] == "buy" and of_signal < 0:
+                    effective_confidence *= 0.8
+                elif signal["direction"] == "sell" and of_signal > 0:
+                    effective_confidence *= 0.8
 
             vol_scale = 1.0
             if self.config.enable_regime_detection:

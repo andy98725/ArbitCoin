@@ -67,6 +67,12 @@ def run_enhanced():
     config.pairs_max_hold_bars = 200
     config.enable_multi_timeframe = True
     config.mtf_confirmation_weight = 0.3
+    config.enable_adaptive_stops = True
+    config.atr_stop_multiplier = 1.5
+    config.enable_order_flow = True
+    config.order_flow_weight = 0.3
+    config.enable_dynamic_arb_threshold = True
+    config.arb_success_lookback = 50
 
     engine = BacktestEngineV2(config)
     return engine.run()
