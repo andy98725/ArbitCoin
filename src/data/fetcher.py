@@ -12,8 +12,22 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__
 USE_REAL_DATA = os.environ.get("ARBITCOIN_REAL_DATA", "0") == "1"
 
 
-def _try_fetch_real_ohlcv(pair_name, interval_minutes=5, since_days=15):
-    """Attempt to fetch real data from Kraken's public API. Returns None on failure."""
+def _check_cache(cache_file, max_age_hours=1):
+    """Check if a cached CSV exists and is fresh enough."""
+    if os.path.exists(cache_file):
+        df = pd.read_csv(cache_file, parse_dates=["timestamp"])
+        if (datetime.utcnow() - df["timestamp"].max()) < timedelta(hours=max_age_hours):
+            return df
+    return None
+
+
+def _save_cache(df, cache_file):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    df.to_csv(cache_file, index=False)
+
+
+def _try_fetch_kraken(pair_name, interval_minutes=5, since_days=15):
+    """Fetch OHLCV from Kraken's public API."""
     import requests
     kraken_map = {
         "BTC/USD": "XXBTZUSD", "ETH/USD": "XETHZUSD", "LTC/USD": "XLTCZUSD",
@@ -22,19 +36,17 @@ def _try_fetch_real_ohlcv(pair_name, interval_minutes=5, since_days=15):
         "LTC/BTC": "XLTCXXBT", "LINK/BTC": "LINKXBT", "XLM/BTC": "XXLMXXBT",
         "AAVE/ETH": "AAVEETH", "LINK/ETH": "LINKETH", "USDC/USD": "USDCUSD",
     }
-    kraken_sym = kraken_map.get(pair_name)
-    if not kraken_sym:
+    sym = kraken_map.get(pair_name)
+    if not sym:
         return None
     try:
-        os.makedirs(DATA_DIR, exist_ok=True)
         cache_file = os.path.join(DATA_DIR, f"kraken_{pair_name.replace('/', '_')}_{interval_minutes}m.csv")
-        if os.path.exists(cache_file):
-            df = pd.read_csv(cache_file, parse_dates=["timestamp"])
-            if (datetime.utcnow() - df["timestamp"].max()) < timedelta(hours=1):
-                return df
+        cached = _check_cache(cache_file)
+        if cached is not None:
+            return cached
 
         since = int((datetime.utcnow() - timedelta(days=since_days)).timestamp())
-        url = f"https://api.kraken.com/0/public/OHLC?pair={kraken_sym}&interval={interval_minutes}&since={since}"
+        url = f"https://api.kraken.com/0/public/OHLC?pair={sym}&interval={interval_minutes}&since={since}"
         resp = requests.get(url, timeout=30)
         resp.raise_for_status()
         data = resp.json()
@@ -50,10 +62,131 @@ def _try_fetch_real_ohlcv(pair_name, interval_minutes=5, since_days=15):
             df[col] = df[col].astype(float)
         df["count"] = df["count"].astype(int)
         df["pair"] = pair_name
-        df.to_csv(cache_file, index=False)
+        _save_cache(df, cache_file)
         return df
     except Exception:
         return None
+
+
+def _try_fetch_coinbase(pair_name, interval_minutes=5, since_days=15):
+    """Fetch OHLCV from Coinbase's public API."""
+    import requests
+    coinbase_map = {
+        "BTC/USD": "BTC-USD", "ETH/USD": "ETH-USD", "LTC/USD": "LTC-USD",
+        "LINK/USD": "LINK-USD", "BCH/USD": "BCH-USD", "ZEC/USD": "ZEC-USD",
+        "XLM/USD": "XLM-USD", "AAVE/USD": "AAVE-USD", "ETH/BTC": "ETH-BTC",
+        "LTC/BTC": "LTC-BTC", "LINK/BTC": "LINK-BTC", "XLM/BTC": "XLM-BTC",
+        "AAVE/ETH": "AAVE-ETH", "LINK/ETH": "LINK-ETH", "USDC/USD": "USDC-USD",
+    }
+    sym = coinbase_map.get(pair_name)
+    if not sym:
+        return None
+
+    granularity_map = {1: 60, 5: 300, 15: 900, 60: 3600, 360: 21600, 1440: 86400}
+    granularity = granularity_map.get(interval_minutes, 300)
+
+    try:
+        cache_file = os.path.join(DATA_DIR, f"coinbase_{pair_name.replace('/', '_')}_{interval_minutes}m.csv")
+        cached = _check_cache(cache_file)
+        if cached is not None:
+            return cached
+
+        all_rows = []
+        end = datetime.utcnow()
+        start = end - timedelta(days=since_days)
+        chunk_size = timedelta(hours=4) if interval_minutes <= 5 else timedelta(days=1)
+        current = start
+
+        while current < end:
+            chunk_end = min(current + chunk_size, end)
+            url = (f"https://api.exchange.coinbase.com/products/{sym}/candles"
+                   f"?start={current.isoformat()}Z&end={chunk_end.isoformat()}Z"
+                   f"&granularity={granularity}")
+            resp = requests.get(url, timeout=30)
+            if resp.status_code == 200:
+                rows = resp.json()
+                all_rows.extend(rows)
+            current = chunk_end
+            import time as _t
+            _t.sleep(0.35)
+
+        if not all_rows:
+            return None
+
+        df = pd.DataFrame(all_rows, columns=["timestamp", "low", "high", "open", "close", "volume"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
+        for col in ["open", "high", "low", "close", "volume"]:
+            df[col] = df[col].astype(float)
+        df["vwap"] = (df["high"] + df["low"] + df["close"]) / 3
+        df["count"] = 0
+        df["pair"] = pair_name
+        df = df.sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
+        _save_cache(df, cache_file)
+        return df
+    except Exception:
+        return None
+
+
+def _try_fetch_gemini(pair_name, interval_minutes=5, since_days=15):
+    """Fetch OHLCV from Gemini's public API."""
+    import requests
+    gemini_map = {
+        "BTC/USD": "btcusd", "ETH/USD": "ethusd", "LTC/USD": "ltcusd",
+        "LINK/USD": "linkusd", "BCH/USD": "bchusd", "ZEC/USD": "zecusd",
+        "XLM/USD": "xlmusd", "AAVE/USD": "aaveusd", "ETH/BTC": "ethbtc",
+        "LTC/BTC": "ltcbtc", "LINK/BTC": "linkbtc", "USDC/USD": "usdcusd",
+    }
+    sym = gemini_map.get(pair_name)
+    if not sym:
+        return None
+
+    tf_map = {1: "1m", 5: "5m", 15: "15m", 30: "30m", 60: "1hr", 360: "6hr", 1440: "1day"}
+    tf = tf_map.get(interval_minutes, "5m")
+
+    try:
+        cache_file = os.path.join(DATA_DIR, f"gemini_{pair_name.replace('/', '_')}_{interval_minutes}m.csv")
+        cached = _check_cache(cache_file)
+        if cached is not None:
+            return cached
+
+        url = f"https://api.gemini.com/v2/candles/{sym}/{tf}"
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+        rows = resp.json()
+
+        if not rows or not isinstance(rows, list):
+            return None
+
+        df = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        for col in ["open", "high", "low", "close", "volume"]:
+            df[col] = df[col].astype(float)
+        df["vwap"] = (df["high"] + df["low"] + df["close"]) / 3
+        df["count"] = 0
+        df["pair"] = pair_name
+        df = df.sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
+        cutoff = datetime.utcnow() - timedelta(days=since_days)
+        df = df[df["timestamp"] >= cutoff].reset_index(drop=True)
+        _save_cache(df, cache_file)
+        return df
+    except Exception:
+        return None
+
+
+EXCHANGE_FETCHERS = {
+    "kraken": _try_fetch_kraken,
+    "coinbase": _try_fetch_coinbase,
+    "gemini": _try_fetch_gemini,
+}
+
+
+def _try_fetch_real_ohlcv(pair_name, interval_minutes=5, since_days=15):
+    """Try all exchange APIs in order, return the first successful result."""
+    for name, fetcher in EXCHANGE_FETCHERS.items():
+        df = fetcher(pair_name, interval_minutes, since_days)
+        if df is not None and not df.empty:
+            return df
+    return None
 
 COIN_PARAMS = {
     "BTC": {"base_price": 64000, "daily_vol": 0.035, "drift": 0.0002},
