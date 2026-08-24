@@ -87,6 +87,7 @@ class BacktestEngineV2:
         self._high_water = {}
         self._partial_tp_taken = {}
         self._partial_sl_taken = {}
+        self._entry_bar = {}
         self._pairs_positions = {}
         self._pairs_positions_age = {}
         self._pairs_trades_executed = 0
@@ -155,6 +156,7 @@ class BacktestEngineV2:
         print(f"  Features: {', '.join(features)}")
 
         bar_count = 0
+        self._current_bar = 0
         report_interval = max(1, len(timestamps) // 20)
 
         for ts in timestamps:
@@ -177,7 +179,7 @@ class BacktestEngineV2:
                             self._mtf_cache[pair_name] = self._compute_mtf_score(pair_name, df, ts)
 
             if self.config.enable_stop_loss:
-                self._check_stop_losses(ts)
+                self._check_stop_losses(ts, bar_count)
 
             if self.config.enable_cross_exchange_arb and (bar_count - self._last_cross_arb_bar) >= self.config.arb_cooldown_bars:
                 if self._execute_cross_exchange_arbs(ts):
@@ -203,6 +205,7 @@ class BacktestEngineV2:
             value = self.portfolio.record_equity(ts, prices)
 
             bar_count += 1
+            self._current_bar = bar_count
             if bar_count % report_interval == 0:
                 pct_done = bar_count / len(timestamps) * 100
                 ret = self.portfolio.get_return_pct(prices)
@@ -221,7 +224,7 @@ class BacktestEngineV2:
         kelly = win_prob - (1 - win_prob) / win_loss_ratio
         return max(0, min(kelly * 0.5, 0.25))
 
-    def _check_stop_losses(self, timestamp):
+    def _check_stop_losses(self, timestamp, bar_count=0):
         prices = self.exchange_mgr.get_current_prices()
         coins_to_sell = []
 
@@ -292,6 +295,7 @@ class BacktestEngineV2:
                 self._high_water.pop(coin, None)
                 self._partial_tp_taken.pop(coin, None)
                 self._partial_sl_taken.pop(coin, None)
+                self._entry_bar.pop(coin, None)
 
     def _get_dynamic_arb_threshold(self):
         if not self.config.enable_dynamic_arb_threshold or len(self._arb_results) < 10:
@@ -664,8 +668,10 @@ class BacktestEngineV2:
                         self._entry_prices[base_coin] = (old_price * old_amount + ask * coins_bought) / (old_amount + coins_bought)
                     else:
                         self._entry_prices[base_coin] = ask
+                        self._entry_bar[base_coin] = self._current_bar
                 else:
                     self._entry_prices[base_coin] = ask
+                    self._entry_bar[base_coin] = self._current_bar
                 self.prediction_trades_executed += 1
 
             elif signal["direction"] == "sell":
