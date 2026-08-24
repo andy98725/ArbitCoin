@@ -61,6 +61,8 @@ class BacktestConfigV2:
         self.enable_performance_tracker = True
         self.perf_window_bars = 288
         self.enable_smart_routing = True
+        self.enable_correlation_limits = True
+        self.max_correlated_exposure_pct = 0.35
 
 
 class BacktestEngineV2:
@@ -91,6 +93,10 @@ class BacktestEngineV2:
         self._dynamic_stop_levels = {}
         self._prediction_pnl = []
         self._hourly_returns = {h: [] for h in range(24)}
+        self._correlated_groups = [
+            {"BTC", "BCH", "LTC"},
+            {"ETH", "LINK", "AAVE"},
+        ]
 
     def run(self, start_date=None, end_date=None, interval_minutes=5):
         print("=" * 70)
@@ -543,7 +549,14 @@ class BacktestEngineV2:
                 prices = self.exchange_mgr.get_current_prices()
                 total_val = self.portfolio.total_value_usd(prices)
 
-                size_pct = self.config.prediction_trade_pct * effective_confidence * combined_scale
+                corr_exposure = self._get_correlated_exposure(base_coin, prices)
+                if corr_exposure > self.config.max_correlated_exposure_pct:
+                    continue
+
+                remaining_capacity = max(0, self.config.max_correlated_exposure_pct - corr_exposure)
+                corr_scale = min(1.0, remaining_capacity / 0.15) if remaining_capacity < 0.15 else 1.0
+
+                size_pct = self.config.prediction_trade_pct * effective_confidence * combined_scale * corr_scale
                 if self.config.enable_kelly_sizing:
                     est_win_prob = 0.5 + signal["confidence"] * 0.2
                     est_win_loss = 1.0 + signal["confidence"]
@@ -796,6 +809,28 @@ class BacktestEngineV2:
             return 0.7
         return 1.0
 
+    def _get_correlated_exposure(self, coin, prices):
+        if not self.config.enable_correlation_limits:
+            return 0.0
+        total_val = self.portfolio.total_value_usd(prices)
+        if total_val <= 0:
+            return 0.0
+        group = None
+        for g in self._correlated_groups:
+            if coin in g:
+                group = g
+                break
+        if group is None:
+            return 0.0
+        exposure = 0.0
+        for c in group:
+            bal = self.portfolio.get_balance(c)
+            if bal > 0:
+                pair = f"{c}/USD"
+                price = prices.get(pair, 0)
+                exposure += bal * price
+        return exposure / total_val
+
     def _liquidate_all_positions(self, timestamp):
         prices = self.exchange_mgr.get_current_prices()
         for coin in list(self.portfolio.holdings.keys()):
@@ -820,19 +855,26 @@ class BacktestEngineV2:
 
     def _find_best_exchange(self, pair, direction):
         best_ex = None
-        best_price = None
+        best_score = None
         for ex_name, exchange in self.exchange_mgr.exchanges.items():
             if pair not in exchange.current_prices:
                 continue
+            data = exchange.current_prices[pair]
             if direction == "buy":
-                price = exchange.current_prices[pair]["ask"] * (1 + exchange.fee_rate)
-                if best_price is None or price < best_price:
-                    best_price = price
+                effective_price = data["ask"] * (1 + exchange.fee_rate)
+                if self.config.enable_smart_routing and data["volume"] > 0:
+                    liquidity_bonus = min(data["volume"] / 1000, 0.001)
+                    effective_price *= (1 - liquidity_bonus)
+                if best_score is None or effective_price < best_score:
+                    best_score = effective_price
                     best_ex = ex_name
             else:
-                price = exchange.current_prices[pair]["bid"] * (1 - exchange.fee_rate)
-                if best_price is None or price > best_price:
-                    best_price = price
+                effective_price = data["bid"] * (1 - exchange.fee_rate)
+                if self.config.enable_smart_routing and data["volume"] > 0:
+                    liquidity_bonus = min(data["volume"] / 1000, 0.001)
+                    effective_price *= (1 + liquidity_bonus)
+                if best_score is None or effective_price > best_score:
+                    best_score = effective_price
                     best_ex = ex_name
         return best_ex
 

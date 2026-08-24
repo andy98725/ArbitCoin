@@ -77,6 +77,8 @@ def run_enhanced():
     config.enable_performance_tracker = True
     config.perf_window_bars = 288
     config.enable_smart_routing = True
+    config.enable_correlation_limits = True
+    config.max_correlated_exposure_pct = 0.35
 
     engine = BacktestEngineV2(config)
     return engine.run()

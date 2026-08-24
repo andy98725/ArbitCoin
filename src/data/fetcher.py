@@ -105,6 +105,13 @@ CORRELATION_MATRIX = {
 _generated_cache = {}
 
 
+def _stable_hash(s):
+    h = 5381
+    for c in s:
+        h = ((h << 5) + h + ord(c)) & 0xFFFFFFFF
+    return h
+
+
 def _generate_correlated_returns(n_steps, coins, seed=42):
     rng = np.random.RandomState(seed)
     n_coins = len(coins)
@@ -154,7 +161,7 @@ def generate_pair_data(pair_name, interval_minutes=5, n_days=15, seed=42):
         return _generated_cache[cache_key]
 
     base_coin, quote_coin = PAIRS[pair_name]
-    rng = np.random.RandomState(seed + hash(pair_name) % 10000)
+    rng = np.random.RandomState(seed + _stable_hash(pair_name) % 10000)
 
     n_steps = int(n_days * 24 * 60 / interval_minutes)
     dt = interval_minutes / (24 * 60)
@@ -226,7 +233,7 @@ def generate_exchange_prices(base_df, exchange_name, seed=42):
     spread = EXCHANGE_SPREADS[exchange_name]
     params = EXCHANGE_PRICE_PARAMS[exchange_name]
 
-    rng = np.random.RandomState(seed + hash(exchange_name) % 10000)
+    rng = np.random.RandomState(seed + _stable_hash(exchange_name) % 10000)
     n = len(base_df)
 
     offset = np.zeros(n)
@@ -273,7 +280,7 @@ def _derive_cross_pair(all_data, pair_name, base_coin, quote_coin, seed=42):
     quote_df = all_data[quote_usd]
 
     n = min(len(base_df), len(quote_df))
-    rng = np.random.RandomState(seed + hash(pair_name) % 10000)
+    rng = np.random.RandomState(seed + _stable_hash(pair_name) % 10000)
 
     implied_close = base_df["close"].values[:n] / quote_df["close"].values[:n]
 
