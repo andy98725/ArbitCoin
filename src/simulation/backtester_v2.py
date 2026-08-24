@@ -81,7 +81,8 @@ class BacktestEngineV2:
         self.stop_losses_triggered = 0
         self.take_profits_triggered = 0
         self.rebalances_executed = 0
-        self._last_arb_bar = -100
+        self._last_cross_arb_bar = -100
+        self._last_tri_arb_bar = -100
         self._entry_prices = {}
         self._high_water = {}
         self._pairs_positions = {}
@@ -176,13 +177,13 @@ class BacktestEngineV2:
             if self.config.enable_stop_loss:
                 self._check_stop_losses(ts)
 
-            if self.config.enable_cross_exchange_arb and (bar_count - self._last_arb_bar) >= self.config.arb_cooldown_bars:
+            if self.config.enable_cross_exchange_arb and (bar_count - self._last_cross_arb_bar) >= self.config.arb_cooldown_bars:
                 if self._execute_cross_exchange_arbs(ts):
-                    self._last_arb_bar = bar_count
+                    self._last_cross_arb_bar = bar_count
 
-            if self.config.enable_triangular_arb and (bar_count - self._last_arb_bar) >= self.config.arb_cooldown_bars:
+            if self.config.enable_triangular_arb and (bar_count - self._last_tri_arb_bar) >= self.config.arb_cooldown_bars:
                 if self._execute_triangular_arbs(ts):
-                    self._last_arb_bar = bar_count
+                    self._last_tri_arb_bar = bar_count
 
             if do_prediction_update and self.config.enable_prediction_trading:
                 self._execute_prediction_trades(ts)
@@ -193,11 +194,11 @@ class BacktestEngineV2:
             if self.config.enable_rebalancing and bar_count % (self.config.rebalance_interval_bars * 4) == 0:
                 self._rebalance_portfolio(ts)
 
-            prices = self.exchange_mgr.get_current_prices()
-            value = self.portfolio.record_equity(ts, prices)
-
             if bar_count == len(timestamps) - 1:
                 self._liquidate_all_positions(ts)
+
+            prices = self.exchange_mgr.get_current_prices()
+            value = self.portfolio.record_equity(ts, prices)
 
             bar_count += 1
             if bar_count % report_interval == 0:
@@ -292,7 +293,7 @@ class BacktestEngineV2:
 
         base_min_profit = self._get_dynamic_arb_threshold()
 
-        for arb in arbs[:2]:
+        for arb in arbs[:4]:
             min_profit = base_min_profit
             if self.config.enable_regime_detection:
                 regime_info = self.regime.get_regime(arb["pair"])
@@ -587,14 +588,32 @@ class BacktestEngineV2:
                     quote_coin, base_coin, trade_amount,
                     1.0 / ask, exchange.fee_rate, best_ex, timestamp
                 )
-                self._entry_prices[base_coin] = ask
+                coins_bought = trade_amount * (1 - exchange.fee_rate) / ask
+                if base_coin in self._entry_prices:
+                    old_price = self._entry_prices[base_coin]
+                    old_amount = self.portfolio.get_balance(base_coin) - coins_bought
+                    if old_amount > 0:
+                        self._entry_prices[base_coin] = (old_price * old_amount + ask * coins_bought) / (old_amount + coins_bought)
+                    else:
+                        self._entry_prices[base_coin] = ask
+                else:
+                    self._entry_prices[base_coin] = ask
                 self.prediction_trades_executed += 1
 
             elif signal["direction"] == "sell":
                 available = self.portfolio.get_balance(base_coin)
                 size_pct = self.config.prediction_trade_pct * effective_confidence * combined_scale
 
-                trade_amount = min(available * size_pct, available)
+                best_ex_check = self._find_best_exchange(pair, "sell")
+                if best_ex_check:
+                    bid_check = self.exchange_mgr.exchanges[best_ex_check].get_bid(pair)
+                    if bid_check and bid_check > 0:
+                        max_coins = self.config.max_trade_usd / bid_check
+                        trade_amount = min(available * size_pct, available, max_coins)
+                    else:
+                        trade_amount = min(available * size_pct, available)
+                else:
+                    trade_amount = min(available * size_pct, available)
                 if trade_amount <= 0:
                     continue
 

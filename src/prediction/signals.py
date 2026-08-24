@@ -247,9 +247,15 @@ class PredictionEngine:
         history = self._signal_history[pair_name]
         if len(history) < 2:
             return 0.0
-        recent = history[-1]
-        prev = history[-2]
-        return recent - prev
+        if len(history) >= 4:
+            n = len(history)
+            x = np.arange(n, dtype=float)
+            y = np.array(history, dtype=float)
+            x_mean = x.mean()
+            y_mean = y.mean()
+            slope = np.sum((x - x_mean) * (y - y_mean)) / max(np.sum((x - x_mean) ** 2), 1e-10)
+            return slope * n
+        return history[-1] - history[-2]
 
     def get_atr_pct(self, pair_name):
         feat = self.pair_features.get(pair_name)
@@ -271,8 +277,6 @@ class PredictionEngine:
         ret_1 = feat["returns_1"].iloc[-1] if "returns_1" in feat.columns else 0
         if np.isnan(ret_1):
             return 0.0
-        if latest_vr > 1.5 and ret_1 > 0.005:
-            return 1.0
-        elif latest_vr > 1.5 and ret_1 < -0.005:
-            return -1.0
-        return 0.0
+        vol_intensity = min((latest_vr - 1.0) / 1.5, 1.0) if latest_vr > 1.0 else 0.0
+        price_direction = max(-1.0, min(1.0, ret_1 / 0.005))
+        return vol_intensity * price_direction
