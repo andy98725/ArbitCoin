@@ -50,8 +50,8 @@ def run_enhanced():
     config.prediction_trade_pct = 0.08
     config.prediction_min_confidence = 0.40
     config.prediction_score_threshold = 1.5
-    config.rebalance_interval_bars = 24
-    config.arb_cooldown_bars = 3
+    config.rebalance_interval_bars = 18
+    config.arb_cooldown_bars = 2
     config.max_position_pct = 0.25
     config.enable_regime_detection = True
     config.enable_kelly_sizing = True
@@ -78,7 +78,7 @@ def run_enhanced():
     config.perf_window_bars = 288
     config.enable_smart_routing = True
     config.enable_correlation_limits = True
-    config.max_correlated_exposure_pct = 0.35
+    config.max_correlated_exposure_pct = 0.40
 
     engine = BacktestEngineV2(config)
     return engine.run()

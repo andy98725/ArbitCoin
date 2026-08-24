@@ -565,7 +565,8 @@ class BacktestEngineV2:
                     size_pct = min(size_pct, kelly_f * combined_scale)
 
                 trade_amount = min(
-                    available * size_pct,
+                    total_val * size_pct,
+                    available,
                     self.config.max_trade_usd,
                     total_val * self.config.max_position_pct,
                 )
