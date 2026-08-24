@@ -307,9 +307,12 @@ class BacktestEngineV2:
             base_coin = arb["base_coin"]
             pair = arb["pair"]
 
+            profit_scale = min(arb["profit_pct"] / min_profit, 3.0)
+            scaled_trade_pct = self.config.max_trade_pct * (0.7 + 0.3 * profit_scale)
+
             available = self.portfolio.get_balance(quote_coin)
             trade_amount = min(
-                available * self.config.max_trade_pct,
+                available * scaled_trade_pct,
                 self.config.max_trade_usd,
                 available,
             )
@@ -547,6 +550,20 @@ class BacktestEngineV2:
 
             if signal["direction"] == "buy":
                 available = self.portfolio.get_balance(quote_coin)
+                if quote_coin == "USD":
+                    usdc_bal = self.portfolio.get_balance("USDC")
+                    if usdc_bal > 10:
+                        usdc_pair = "USDC/USD"
+                        usdc_ex = self._find_best_exchange(usdc_pair, "sell")
+                        if usdc_ex:
+                            ex = self.exchange_mgr.exchanges[usdc_ex]
+                            usdc_price = ex.get_bid(usdc_pair)
+                            if usdc_price and usdc_price > 0.99:
+                                self.portfolio.execute_prediction_trade(
+                                    "USDC", "USD", usdc_bal, usdc_price,
+                                    ex.fee_rate, usdc_ex, timestamp
+                                )
+                                available = self.portfolio.get_balance("USD")
                 prices = self.exchange_mgr.get_current_prices()
                 total_val = self.portfolio.total_value_usd(prices)
 
